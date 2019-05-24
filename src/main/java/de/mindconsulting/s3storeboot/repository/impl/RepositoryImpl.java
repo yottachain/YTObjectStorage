@@ -1,6 +1,5 @@
 package de.mindconsulting.s3storeboot.repository.impl;
 
-import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.BaseEncoding;
 import com.ytfs.client.DownloadObject;
@@ -415,11 +414,6 @@ public class RepositoryImpl implements S3Repository {
         }
         return flag;
     }
-//    public boolean checkObjectExist(String bucketName,String objectKey) {
-//        boolean flag = false;
-//        Map<String,byte[]> map = ObjectHandler.listObject()
-//
-//    }
 
     @Override
     public void getObject(S3CallContext callContext, String bucketName, String objectKey, boolean head) {
@@ -455,8 +449,6 @@ public class RepositoryImpl implements S3Repository {
                 e.printStackTrace();
             }
         }
-
-        //从链上下载文件保存到本地bucket中
         DownloadObject obj= null;
         try {
             obj = new DownloadObject(bucketName, objectKey);
@@ -464,42 +456,16 @@ public class RepositoryImpl implements S3Repository {
             e.printStackTrace();
         }
         InputStream is=obj.load();
-        ObjectMetadata metadata = new ObjectMetadata();
-
-        try {
-            //将文件写入到本地缓存路径
-            writeToLocal(dataBucket.toString(), is,objectKey);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        Path bucketData = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
-        Path bucketMeta = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
-        if (!Files.exists(bucketData))
-            throw new NoSuchBucketException(bucketName, callContext.getRequestId());
-        Path object = bucketData.resolve(objectKey);
-        Path objectMeta = bucketMeta.resolve(objectKey + META_XML_EXTENSION);
-
-        if (!Files.exists(object))
-            throw new NoSuchKeyException(objectKey, callContext.getRequestId());
-
-        lock(bucketMeta, objectKey, S3Lock.LockType.read, callContext);
-        if (Files.exists(objectMeta)) {
-            loadMetaFileIntoHeader(objectMeta, callContext);
-        }
-
         try {
             S3ResponseHeader header = new S3ResponseHeaderImpl();
-            header.setContentLength(Files.size(object));
-            header.setContentType(getMimeType(object));
+            header.setContentLength(obj.getLength());
+            header.setContentType("application/octetstream");
             callContext.setResponseHeader(header);
             if (!head)
-                callContext.setContent(Files.newInputStream(object));
-        } catch (IOException e) {
+                callContext.setContent(is);
+        } catch (Exception e) {
             logger.error("internal error", e);
-//            throw new InternalErrorException(objectKey, callContext.getRequestId());
             e.printStackTrace();
-        } finally {
-            unlock(bucketMeta, objectKey, callContext);
         }
     }
 
