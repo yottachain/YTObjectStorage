@@ -108,7 +108,9 @@ public class RepositoryImpl implements S3Repository {
 
         List<S3Bucket> s3Buckets = new ArrayList<>();
         try {
+            System.out.println("listAllBuckets=========================");
             String[] buckets = BucketHandler.listBucket();
+            System.out.println("buckets========================="+buckets.length);
             for(int i=0;i<buckets.length;i++)  {
                 S3BucketImpl  s3Bucket = new S3BucketImpl(buckets[i],new Date(),callContext.getUser());
                 s3Buckets.add(s3Bucket);
