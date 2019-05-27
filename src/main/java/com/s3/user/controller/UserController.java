@@ -7,15 +7,19 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 @RestController
 @RequestMapping(value="/user")
 public class UserController {
 
     @RequestMapping(value = "/getUserStat",method = RequestMethod.GET)
     @ResponseBody
-    public String getUserStat() {
+    public String getUserStat(HttpServletRequest request, HttpServletResponse response) {
         String json = null;
         try {
+            response.setHeader("Access-Control-Allow-Origin","*");
             json = LocalInterface.getUserStat();
             System.out.println("userstat==================="+json);
         } catch (ServiceException e) {
@@ -26,9 +30,9 @@ public class UserController {
 
     @RequestMapping(value = "/getPrivateKey",method = RequestMethod.GET)
     @ResponseBody
-    public String getPrivateKey() {
+    public String getPrivateKey(HttpServletRequest request, HttpServletResponse response) {
         String getPrivateKey = null;
-
+        response.setHeader("Access-Control-Allow-Origin","*");
         getPrivateKey = LocalInterface.getPrivateKey();
         System.out.println("getPrivateKey==========="+getPrivateKey);
         return getPrivateKey;
