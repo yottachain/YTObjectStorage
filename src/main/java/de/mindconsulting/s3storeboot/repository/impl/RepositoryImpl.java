@@ -18,6 +18,7 @@ import de.mc.ladon.s3server.repository.api.S3Repository;
 import de.mindconsulting.s3storeboot.jaxb.meta.StorageMeta;
 import de.mindconsulting.s3storeboot.jaxb.meta.UserData;
 import de.mindconsulting.s3storeboot.util.S3Lock;
+import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -181,11 +182,14 @@ public class RepositoryImpl implements S3Repository {
         //2、如果bucket存在判断bucket下是否存在文件
         Map<String,byte[]> map = new HashMap<>();
         try {
-             map = ObjectHandler.listObject(bucketName);
+             ObjectId objectId = ObjectHandler.listObject(map,bucketName,null,1000);
+             if(objectId != null) {
+                 new BucketNotEmptyException(bucketName, callContext.getRequestId());
+             }
         } catch (ServiceException e) {
             e.printStackTrace();
         }
-        if(map.size() > 0) {
+        if(map.size() > 0 ) {
             new BucketNotEmptyException(bucketName, callContext.getRequestId());
         }
         //3、调用删除接口
@@ -512,32 +516,24 @@ public class RepositoryImpl implements S3Repository {
     @Override
     public S3ListBucketResult listBucket(S3CallContext callContext, String bucketName) {
         Integer maxKeys = callContext.getParams().getMaxKeys();
-
+        String marker = callContext.getParams().getMarker();
+        ObjectId startId=null;
+        if(marker!=null) {
+            startId=new ObjectId(marker);
+        }
         List<S3Object> objects = new ArrayList<>();
-        long count = 0l;
         try {
-            Map<String,byte[]> map = ObjectHandler.listObject(bucketName);
-            count = Long.valueOf(map.size());
+            Map<String,byte[]> map=new HashMap<>();
+            startId = ObjectHandler.listObject(map,bucketName,startId,maxKeys);
             Iterator<Map.Entry<String, byte[]>> it = map.entrySet().iterator();
             if(map.size()>0) {
                 while (it.hasNext()) {
                     Map.Entry<String,byte[]> entry = it.next();
                     String key = entry.getKey();
+                    System.out.println("key==============="+key);
                     byte[] meta = entry.getValue();
                     Map<String, String> header = SerializationUtil.deserializeMap(meta);
-//                    String lastModified = header.get("last-modified");
-//                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
-//                    Date date = new Date();
-//                    try {
-//                        if(lastModified == null) {
-//
-//                        } else  {
-//                            date = sdf.parse(lastModified);
-//                        }
-//
-//                    } catch (ParseException e) {
-//                        e.printStackTrace();
-//                    }
+
                     S3Metadata s3Metadata = getMetaMessage(header);
                     long size = Long.parseLong(header.get("contentLength"));
                     objects.add(new S3ObjectImpl(
@@ -559,7 +555,8 @@ public class RepositoryImpl implements S3Repository {
         } catch (ServiceException e) {
             e.printStackTrace();
         }
-        return new S3ListBucketResultImpl(objects, null, count > maxKeys, bucketName, null, null);
+
+        return new S3ListBucketResultImpl(objects, null, startId!=null, bucketName, startId==null?null:startId.toHexString(), null);
     }
 
     private Stream<Path> getPathStream(String bucketName, String prefix, Path bucket, String marker) throws IOException {
