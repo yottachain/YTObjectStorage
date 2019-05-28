@@ -19,6 +19,7 @@ import de.mindconsulting.s3storeboot.jaxb.meta.StorageMeta;
 import de.mindconsulting.s3storeboot.jaxb.meta.UserData;
 import de.mindconsulting.s3storeboot.util.S3Lock;
 import org.bson.types.ObjectId;
+import org.omg.CORBA.ObjectHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +53,6 @@ public class RepositoryImpl implements S3Repository {
     private final JAXBContext jaxbContext;
     private final ConcurrentMap<String, S3User> userMap;
     public static final Predicate<Path> IS_DIRECTORY = p -> Files.isDirectory(p);
-
     public final String accessKey;
     private final int allowMaxSize;
 
@@ -182,8 +182,8 @@ public class RepositoryImpl implements S3Repository {
         //2、如果bucket存在判断bucket下是否存在文件
         Map<String,byte[]> map = new HashMap<>();
         try {
-             ObjectId objectId = ObjectHandler.listObject(map,bucketName,null,1000);
-             if(objectId != null) {
+             Map<ObjectId,String> lastMap = ObjectHandler.listObject(map,bucketName,null,1000);
+             if(lastMap.size()>0) {
                  new BucketNotEmptyException(bucketName, callContext.getRequestId());
              }
         } catch (ServiceException e) {
@@ -517,14 +517,31 @@ public class RepositoryImpl implements S3Repository {
     public S3ListBucketResult listBucket(S3CallContext callContext, String bucketName) {
         Integer maxKeys = callContext.getParams().getMaxKeys();
         String marker = callContext.getParams().getMarker();
-        ObjectId startId=null;
-        if(marker!=null) {
-            startId=new ObjectId(marker);
+        ObjectId lastId=null;
+        String fileName = null;
+        if(marker != null) {
+            fileName = marker;
+            try {
+                lastId = ObjectHandler.getObjectIdByName(bucketName,fileName);
+            } catch (ServiceException e) {
+                e.printStackTrace();
+            }
         }
+
         List<S3Object> objects = new ArrayList<>();
         try {
-            Map<String,byte[]> map=new HashMap<>();
-            startId = ObjectHandler.listObject(map,bucketName,startId,maxKeys);
+            Map<String,byte[]> map=new TreeMap<>();
+            Map<ObjectId,String> lastMap = new HashMap<>();
+            lastMap = ObjectHandler.listObject(map,bucketName,lastId,maxKeys);
+            if(lastMap.size() == 1) {
+                for(Map.Entry<ObjectId,String> entry : lastMap.entrySet()) {
+                    lastId = entry.getKey();
+                    fileName = entry.getValue();
+                    marker = fileName;
+                }
+            } else {
+                marker = null;
+            }
             Iterator<Map.Entry<String, byte[]>> it = map.entrySet().iterator();
             if(map.size()>0) {
                 while (it.hasNext()) {
@@ -555,8 +572,8 @@ public class RepositoryImpl implements S3Repository {
         } catch (ServiceException e) {
             e.printStackTrace();
         }
-
-        return new S3ListBucketResultImpl(objects, null, startId!=null, bucketName, startId==null?null:startId.toHexString(), null);
+        System.out.println("lastFilename==="+fileName+",marker======="+marker);
+        return new S3ListBucketResultImpl(objects, null, lastId!=null, bucketName, marker, null);
     }
 
     private Stream<Path> getPathStream(String bucketName, String prefix, Path bucket, String marker) throws IOException {
