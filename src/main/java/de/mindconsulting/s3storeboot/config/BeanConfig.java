@@ -46,8 +46,6 @@ public class BeanConfig {
     int allowMaxSize;
     @Value("${s3server.url}")
     public String url;
-    @Value("${s3server.superNodeKey}")
-    String superNodeKey;
     @Value("${s3server.username}")
     String username;
     @Value("${s3server.contractAccount}")
@@ -85,7 +83,6 @@ public class BeanConfig {
         cfg.setKUSp(KUSp);
         cfg.setSuperNodeAddrs(list);
         cfg.setSuperNodeID(superNodeID);
-        cfg.setSuperNodeNum(Integer.parseInt(superNodeNum));
         cfg.setTmpFilePath(fsRepoRoot);
         cfg.setContractAccount(contractAccount);
         cfg.setUsername(username);
