@@ -4,6 +4,7 @@ import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.*;
 import com.ytfs.common.ServiceException;
+import de.mc.ladon.s3server.common.StreamUtils;
 import de.mindconsulting.s3storeboot.util.S3Clientutil;
 import org.junit.Before;
 import org.junit.Test;
@@ -64,13 +65,20 @@ public class S3StoreBootApplicationTests {
 	@Test
 	public void test() {
 		AmazonS3Client client = new S3Clientutil().getClient();
-//		ObjectListing objectListing = client.listObjects("yta001");
-//		CreateBucketRequest createBucketRequest = new CreateBucketRequest("bucket05");
-//		createBucketRequest.setCannedAcl(CannedAccessControlList.PublicReadWrite);
-//		client.createBucket(createBucketRequest);
-//
-		ObjectListing objectListing = client.listObjects("new-bucket-02");
-		System.out.println("=====================================");
+		File file = new File("E://凌子杰.txt");
+		client.putObject("test-huaisong",file.getName(),file);
+		S3Object s3Object = client.getObject("test-huaisong","directory03");
+		InputStream is=s3Object.getObjectContent();
+		ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+		try {
+			long bytesCopied = StreamUtils.copy(is, out);
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		String ss=new String(out.toByteArray());
+		System.out.println("====================================="+ss);
 
 	}
 
