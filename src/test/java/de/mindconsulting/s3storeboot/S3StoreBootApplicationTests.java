@@ -50,6 +50,7 @@ public class S3StoreBootApplicationTests {
 		map.put("hello","world");
 		map.put("username","penghuaisong");
 		ObjectMetadata meta = new ObjectMetadata();
+
 		meta.setLastModified(new Date());
 		meta.setContentLength(file.length());
 		meta.setUserMetadata(map);
@@ -65,20 +66,32 @@ public class S3StoreBootApplicationTests {
 	@Test
 	public void test() {
 		AmazonS3Client client = new S3Clientutil().getClient();
-		File file = new File("E://凌子杰.txt");
-		client.putObject("test-huaisong",file.getName(),file);
-		S3Object s3Object = client.getObject("test-huaisong","directory03");
-		InputStream is=s3Object.getObjectContent();
-		ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
-		try {
-			long bytesCopied = StreamUtils.copy(is, out);
-		} catch (IOException e) {
-			e.printStackTrace();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-		String ss=new String(out.toByteArray());
-		System.out.println("====================================="+ss);
+		BucketVersioningConfiguration versioningConfiguration = new BucketVersioningConfiguration();
+//		//启用版本控制
+		versioningConfiguration.setStatus(BucketVersioningConfiguration.ENABLED);
+		SetBucketVersioningConfigurationRequest request = new SetBucketVersioningConfigurationRequest("new-bucket-97b2f2d9",versioningConfiguration);
+		client.setBucketVersioningConfiguration(request);
+
+		BucketVersioningConfiguration configuration = client.getBucketVersioningConfiguration("new-bucket-97b2f2d9");
+		VersionListing versionListing = client.listVersions("new-bucket-97b2f2d9","");
+		System.out.println("............................................");
+//		client.deleteVersion("new-bucket-97b2f2d9","test03.txt","5cfdf5d851f96b0e06ffa91c");
+//		client.putObject("test-huaisong","directory04/", new ByteArrayInputStream(new byte[0]), null);
+//		PutObjectResult result = client.putObject("test-huaisong","directory04/", new ByteArrayInputStream(new byte[0]), null);
+		//		File file = new File("E://凌子杰.txt");
+//		client.putObject("test-huaisong","/test111",file);
+//		S3Object s3Object = client.getObject("test-huaisong","directory03");
+//		InputStream is=s3Object.getObjectContent();
+//		ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+//		try {
+//			long bytesCopied = StreamUtils.copy(is, out);
+//		} catch (IOException e) {
+//			e.printStackTrace();
+//		} catch (InterruptedException e) {
+//			e.printStackTrace();
+//		}
+//		String ss=new String(out.toByteArray());
+//		System.out.println("====================================="+ss);
 
 	}
 

@@ -5,28 +5,51 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.stereotype.Component;
+import org.tanukisoftware.wrapper.WrapperListener;
+import org.tanukisoftware.wrapper.WrapperManager;
 
 @Component
 @SpringBootApplication
 @EnableAutoConfiguration(exclude={MongoAutoConfiguration.class})
 @ComponentScan(basePackages = {"com.s3.user.controller"})
 @ComponentScan(basePackages = {"de.*"})
-public class YTObjectStorageApplication {
+public class YTObjectStorageApplication implements WrapperListener{
 
-	private static Logger logger = Logger.getLogger(SpringApplication.class);
+    private static Logger logger = Logger.getLogger(SpringApplication.class);
+    public static void main(String[] args) {
+        System.out.println("............................");
+        System.out.println("............................");
+        System.out.println("............................");
+        System.out.println("............................");
+        System.out.println("............................");
+        WrapperManager.start(new YTObjectStorageApplication(), args);
+        System.out.println("............Service..started..............");
+    }
 
-	public static void main(String[] args) {
+    ConfigurableApplicationContext context=null;
+    @Override
+    public Integer start(String[] strings) {
+        context= SpringApplication.run(YTObjectStorageApplication.class, strings);
+        return null;
+    }
 
-		System.out.println("............................");
-		System.out.println("............................");
-		System.out.println("............................");
-		System.out.println("............................");
-		System.out.println("............................");
+    @Override
+    public int stop(int exitCode) {
+        SpringApplication.exit(context);
+        return exitCode;
+    }
 
-		SpringApplication.run(YTObjectStorageApplication.class, args);
-		System.out.println("............Service..started..............");
-	}
-
+    @Override
+    public void controlEvent(int event) {
+        if (WrapperManager.isControlledByNativeWrapper() == false) {
+            if (event == WrapperManager.WRAPPER_CTRL_C_EVENT
+                    || event == WrapperManager.WRAPPER_CTRL_CLOSE_EVENT
+                    || event == WrapperManager.WRAPPER_CTRL_SHUTDOWN_EVENT) {
+                WrapperManager.stop(0);
+            }
+        }
+    }
 }
