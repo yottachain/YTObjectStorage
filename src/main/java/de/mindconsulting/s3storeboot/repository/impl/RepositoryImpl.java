@@ -1,5 +1,6 @@
 package de.mindconsulting.s3storeboot.repository.impl;
 
+import com.amazonaws.services.s3.model.*;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.BaseEncoding;
 import com.ytfs.client.DownloadObject;
@@ -15,6 +16,7 @@ import de.mc.ladon.s3server.common.Encoding;
 import de.mc.ladon.s3server.common.S3Constants;
 import de.mc.ladon.s3server.common.StreamUtils;
 import de.mc.ladon.s3server.entities.api.*;
+import de.mc.ladon.s3server.entities.api.S3Object;
 import de.mc.ladon.s3server.entities.impl.*;
 import de.mc.ladon.s3server.exceptions.*;
 import de.mc.ladon.s3server.repository.api.S3Repository;
@@ -324,6 +326,20 @@ public class RepositoryImpl implements S3Repository {
         }
     }
 
+    @Override
+    public void createMultipartObject(S3CallContext callContext, String bucketName, String objectKey) {
+//        MultipartUpload multipartUpload = new MultipartUpload();
+//        InitiateMultipartUp
+//        ObjectMetadata meta = new ObjectMetadata();
+//        meta.setContentLength(2*1024*1024);
+//
+//        InitiateMultipartUploadRequest initiateMultipartUploadRequest = new InitiateMultipartUploadRequest(bucketName,objectKey,meta);
+//        InitiateMultipartUpload initiateMultipartUpload =
+//        String uploadId = initiateMultipartUploadRequest.
+
+
+    }
+
 
     private void unlock(Path metaPath, String objectKey, S3CallContext callContext) {
         S3Lock lock;
@@ -569,6 +585,9 @@ public class RepositoryImpl implements S3Repository {
                     S3Metadata s3Metadata = getMetaMessage(header);
 
                     String lastModified = header.get("x-amz-date");
+                    if(lastModified == null) {
+                        lastModified = header.get("date");
+                    }
                     Date date = new Date(lastModified);
                     long size = Long.parseLong(header.get("contentLength"));
                     s3Objects.add(new S3ObjectImpl(
@@ -608,7 +627,7 @@ public class RepositoryImpl implements S3Repository {
                     if(commonPrefix != null) {
                         prefixes.add(commonPrefix);
                     } else {
-                        s3Objects.add(obj);
+//                        s3Objects.add(obj);
                     }
                 }
                 List<String> prefList = new ArrayList<>(prefixes);
@@ -645,7 +664,7 @@ public class RepositoryImpl implements S3Repository {
         } catch (ServiceException e) {
             e.printStackTrace();
         }
-        if(isExistObject) {
+        if(!isExistObject) {
             throw new NoSuchKeyException(objectKey, callContext.getRequestId());
         }
         try {

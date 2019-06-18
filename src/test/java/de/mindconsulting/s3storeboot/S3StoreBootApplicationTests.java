@@ -3,6 +3,8 @@ package de.mindconsulting.s3storeboot;
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.*;
+import com.amazonaws.services.s3.transfer.TransferManager;
+import com.amazonaws.services.s3.transfer.Upload;
 import com.ytfs.common.ServiceException;
 import de.mc.ladon.s3server.common.StreamUtils;
 import de.mindconsulting.s3storeboot.util.S3Clientutil;
@@ -64,50 +66,50 @@ public class S3StoreBootApplicationTests {
 
 
 	@Test
-	public void test() {
+	public void test() throws FileNotFoundException {
 		AmazonS3Client client = new S3Clientutil().getClient();
-		BucketVersioningConfiguration versioningConfiguration = new BucketVersioningConfiguration();
-//		//启用版本控制
-		versioningConfiguration.setStatus(BucketVersioningConfiguration.ENABLED);
-		SetBucketVersioningConfigurationRequest request = new SetBucketVersioningConfigurationRequest("new-bucket-97b2f2d9",versioningConfiguration);
-		client.setBucketVersioningConfiguration(request);
+		File file = new File("E://ubuntu-18.04-desktop-amd64.iso");
+		String bucketName = "test2";
+		ObjectMetadata meta = new ObjectMetadata();
+//		meta.setContentLength(2*1024*1024);
+		InitiateMultipartUploadRequest initiateMultipartUploadRequest = new InitiateMultipartUploadRequest(bucketName,file.getName(),meta);
+		InitiateMultipartUploadResult result = client.initiateMultipartUpload(initiateMultipartUploadRequest);
+		String uploadId = result.getUploadId();
+		System.out.println("uploadId ====="+uploadId);
 
-		BucketVersioningConfiguration configuration = client.getBucketVersioningConfiguration("new-bucket-97b2f2d9");
-		VersionListing versionListing = client.listVersions("new-bucket-97b2f2d9","");
-		System.out.println("............................................");
-//		client.deleteVersion("new-bucket-97b2f2d9","test03.txt","5cfdf5d851f96b0e06ffa91c");
-//		client.putObject("test-huaisong","directory04/", new ByteArrayInputStream(new byte[0]), null);
-//		PutObjectResult result = client.putObject("test-huaisong","directory04/", new ByteArrayInputStream(new byte[0]), null);
-		//		File file = new File("E://凌子杰.txt");
-//		client.putObject("test-huaisong","/test111",file);
-//		S3Object s3Object = client.getObject("test-huaisong","directory03");
-//		InputStream is=s3Object.getObjectContent();
-//		ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+//		File file = new File("E://ubuntu-18.04-desktop-amd64.iso");
+//
+//		InputStream input = new FileInputStream(file);
+//		TransferManager tm = new TransferManager(client);
+//		ObjectMetadata meta = new ObjectMetadata();
+//		meta.setContentLength(2*1024*1024);
+//		Upload upload = tm.upload("test2",file.getName(),input,meta);
 //		try {
-//			long bytesCopied = StreamUtils.copy(is, out);
-//		} catch (IOException e) {
-//			e.printStackTrace();
+//			// 等待上传全部完成。     
+//			upload.waitForCompletion();
+//			System.out.println("Upload complete.");
+//		}catch(AmazonClientException amazonClientException) {
+//			System.out.println("Unable to upload file, upload was aborted.");
+//			amazonClientException.printStackTrace();
 //		} catch (InterruptedException e) {
 //			e.printStackTrace();
 //		}
-//		String ss=new String(out.toByteArray());
-//		System.out.println("====================================="+ss);
-
+//		tm.shutdownNow();
 	}
 
 
-	private static void writeToLocal(String destination, InputStream input,String fileName)
-			throws IOException {
-		int index;
-		byte[] bytes = new byte[1024];
-		FileOutputStream downloadFile = new FileOutputStream(destination+"/"+fileName);
-		while ((index = input.read(bytes)) != -1) {
-			downloadFile.write(bytes, 0, index);
-			downloadFile.flush();
-		}
-		downloadFile.close();
-		input.close();
-	}
+//	private static void writeToLocal(String destination, InputStream input,String fileName)
+//			throws IOException {
+//		int index;
+//		byte[] bytes = new byte[1024];
+//		FileOutputStream downloadFile = new FileOutputStream(destination+"/"+fileName);
+//		while ((index = input.read(bytes)) != -1) {
+//			downloadFile.write(bytes, 0, index);
+//			downloadFile.flush();
+//		}
+//		downloadFile.close();
+//		input.close();
+//	}
 
 
     @Test
