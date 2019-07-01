@@ -3,11 +3,8 @@ package de.mindconsulting.s3storeboot;
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.*;
-import com.amazonaws.services.s3.transfer.TransferManager;
-import com.amazonaws.services.s3.transfer.Upload;
 import com.ytfs.common.ServiceException;
-import de.mc.ladon.s3server.common.StreamUtils;
-import de.mindconsulting.s3storeboot.util.S3Clientutil;
+import de.mindconsulting.s3storeboot.util.S3ClientUtil;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -15,10 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 
 import java.io.*;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static org.junit.Assert.assertEquals;
 
@@ -36,7 +30,7 @@ public class S3StoreBootApplicationTests {
 
 	}
 	public AmazonS3Client getClient() {
-		S3Clientutil s3Clientutil = new S3Clientutil();
+		S3ClientUtil s3Clientutil = new S3ClientUtil();
 		AmazonS3Client s3Client = s3Clientutil.getClient();
 		return s3Client;
 	}
@@ -44,7 +38,7 @@ public class S3StoreBootApplicationTests {
 	@Test
 	public void testGetObject() throws IOException {
 		AmazonS3Client client = this.getClient();
-		File file = new File("E://test004.txt");
+		File file = new File("E://Engkust.docx");
 
 		InputStream input = new FileInputStream(file);
 		Map<String,String> map = new HashMap<>();
@@ -56,10 +50,69 @@ public class S3StoreBootApplicationTests {
 		meta.setLastModified(new Date());
 		meta.setContentLength(file.length());
 		meta.setUserMetadata(map);
-//		PutObjectRequest putObjectRequest = new PutObjectRequest(bucket.getName(), file.getName(),input, meta);
-//		putObjectRequest.setFile(file);
-		client.putObject("test001", file.getName(),input, meta);
+		client.putObject("x-test", file.getName(),input, meta);
 		System.out.println("over");
+
+	}
+	@Test
+	public void testSubStr(){
+		String range = "bytes=0-2000";
+		String newRange = range.replace("bytes=","");
+		String start = newRange.substring(0,newRange.indexOf("-"));
+		String end = newRange.substring(newRange.indexOf("-")+1);
+		long start1 = Long.parseLong(start);
+		long end1 = Long.parseLong(end);
+		System.out.println("==================");
+	}
+	@Test
+	public void testString() {
+		String str = "dsksksk";
+		str = "Off";
+		System.out.println("ssssssss======"+str);
+		System.out.println("ssssssss======"+str);
+	}
+	@Test
+	public void testVersionObject() {
+		AmazonS3Client client = this.getClient();
+		BucketVersioningConfiguration configuration = new BucketVersioningConfiguration();
+		configuration.setStatus(BucketVersioningConfiguration.ENABLED);
+		SetBucketVersioningConfigurationRequest request = new SetBucketVersioningConfigurationRequest("new-version",configuration);
+		client.setBucketVersioningConfiguration(request);
+		System.out.println("开启历史版本成功");
+		configuration = client.getBucketVersioningConfiguration("new-version");
+		System.out.println("开启历史版本成功");
+
+
+	}
+	@Test
+	public void testSerialization(){
+//		Map<String,String> map = new HashMap<>();
+//		map.put("test1","1234");
+//		map.put("test2","3344");
+//		map.put("test3","dsssee");
+//		map.put("test4","对哦额饿哦额");
+//		byte[] bs = SerializationUtil.serializeMap(map);
+//
+//		Map<String,String> newMap = SerializationUtil.deserializeMap(bs);
+//
+//		System.out.println(newMap.size());
+		AmazonS3Client client = this.getClient();
+//		client.listVersions();
+
+
+
+	}
+
+	@Test
+	public void testGetRangeObject() {
+		AmazonS3Client client = new S3ClientUtil().getClient();
+
+		GetObjectRequest request = new GetObjectRequest("ab1","apache-tomcat-7.0.86-windows-x64.zip");
+		request.setRange(1000,2000);
+		S3Object s3Object = client.getObject(request);
+		InputStream in = s3Object.getObjectContent();
+		byte[] buf = new byte[4096];
+
 
 	}
 
@@ -67,8 +120,9 @@ public class S3StoreBootApplicationTests {
 
 	@Test
 	public void test() throws FileNotFoundException {
-		AmazonS3Client client = new S3Clientutil().getClient();
+		AmazonS3Client client = new S3ClientUtil().getClient();
 		File file = new File("E://ubuntu-18.04-desktop-amd64.iso");
+        InputStream input = new FileInputStream(file);
 		String bucketName = "test2";
 		ObjectMetadata meta = new ObjectMetadata();
 //		meta.setContentLength(2*1024*1024);
@@ -77,24 +131,28 @@ public class S3StoreBootApplicationTests {
 		String uploadId = result.getUploadId();
 		System.out.println("uploadId ====="+uploadId);
 
-//		File file = new File("E://ubuntu-18.04-desktop-amd64.iso");
-//
-//		InputStream input = new FileInputStream(file);
-//		TransferManager tm = new TransferManager(client);
-//		ObjectMetadata meta = new ObjectMetadata();
-//		meta.setContentLength(2*1024*1024);
-//		Upload upload = tm.upload("test2",file.getName(),input,meta);
-//		try {
-//			// 等待上传全部完成。     
-//			upload.waitForCompletion();
-//			System.out.println("Upload complete.");
-//		}catch(AmazonClientException amazonClientException) {
-//			System.out.println("Unable to upload file, upload was aborted.");
-//			amazonClientException.printStackTrace();
-//		} catch (InterruptedException e) {
-//			e.printStackTrace();
-//		}
-//		tm.shutdownNow();
+        List<PartETag> partETags = new ArrayList<PartETag>();
+        UploadPartRequest uploadPartRequest = new UploadPartRequest();
+        uploadPartRequest.setBucketName(bucketName);
+        uploadPartRequest.setKey(file.getName());
+        uploadPartRequest.setUploadId(uploadId);
+        uploadPartRequest.setInputStream(input);
+        uploadPartRequest.setPartSize(2*1024*1024);
+        uploadPartRequest.setPartNumber(2);
+
+        UploadPartResult uploadPartResult = client.uploadPart(uploadPartRequest);
+
+        partETags.add(uploadPartResult.getPartETag());
+
+        Collections.sort(partETags, new Comparator<PartETag>() {
+                public int compare(PartETag p1, PartETag p2) {
+                    return p1.getPartNumber() - p2.getPartNumber();
+                }
+        });
+        CompleteMultipartUploadRequest completeMultipartUploadRequest = new CompleteMultipartUploadRequest(bucketName, file.getName(), uploadId, partETags);
+        //成功完成分片上传后，服务端会返回该对象的信息
+        CompleteMultipartUploadResult over = client.completeMultipartUpload(completeMultipartUploadRequest);
+
 	}
 
 
