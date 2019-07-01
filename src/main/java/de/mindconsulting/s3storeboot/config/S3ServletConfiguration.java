@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Configuration;
 public class S3ServletConfiguration {
 
     private String baseUrl = "/api/s3";
-    private int threadPoolSize = 5;
+    private int threadPoolSize = 20;
     private boolean securityEnabled = true;
     private boolean loggingEnabled = false;
 

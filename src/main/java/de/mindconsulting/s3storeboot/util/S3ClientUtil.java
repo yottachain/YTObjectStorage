@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 @ImportAutoConfiguration
 @Component
-public class S3Clientutil {
+public class S3ClientUtil {
 
     @Value("${s3server.baseUrl}")
    private String repoBaseUrl;
@@ -22,7 +22,6 @@ public class S3Clientutil {
                 new ClientConfiguration());
         newClient.setS3ClientOptions(new S3ClientOptions().withPathStyleAccess(true));
         newClient.setEndpoint("http://localhost:8083/api/s3");
-//        newClient.setEndpoint("http://152.136.11.50:8083/api/s3");
         return newClient;
     }
 

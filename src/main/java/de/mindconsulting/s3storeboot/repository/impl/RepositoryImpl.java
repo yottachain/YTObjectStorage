@@ -1,6 +1,5 @@
 package de.mindconsulting.s3storeboot.repository.impl;
 
-import com.amazonaws.services.s3.model.*;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.BaseEncoding;
 import com.ytfs.client.DownloadObject;
@@ -9,16 +8,15 @@ import com.ytfs.client.s3.BucketHandler;
 import com.ytfs.client.s3.ObjectHandler;
 import com.ytfs.common.SerializationUtil;
 import com.ytfs.common.ServiceException;
-import com.ytfs.service.packet.s3.ListObjectResp;
 import com.ytfs.service.packet.s3.entities.FileMetaMsg;
-import de.mc.ladon.s3server.common.DelimiterUtil;
-import de.mc.ladon.s3server.common.Encoding;
-import de.mc.ladon.s3server.common.S3Constants;
-import de.mc.ladon.s3server.common.StreamUtils;
+import de.mc.ladon.s3server.common.*;
 import de.mc.ladon.s3server.entities.api.*;
-import de.mc.ladon.s3server.entities.api.S3Object;
 import de.mc.ladon.s3server.entities.impl.*;
 import de.mc.ladon.s3server.exceptions.*;
+import de.mc.ladon.s3server.jaxb.entities.CompleteMultipartUploadResult;
+import de.mc.ladon.s3server.jaxb.entities.InitiateMultipartUploadResult;
+import de.mc.ladon.s3server.jaxb.entities.Part;
+import de.mc.ladon.s3server.jaxb.entities.VersioningConfiguration;
 import de.mc.ladon.s3server.repository.api.S3Repository;
 import de.mindconsulting.s3storeboot.jaxb.meta.StorageMeta;
 import de.mindconsulting.s3storeboot.jaxb.meta.UserData;
@@ -26,22 +24,22 @@ import de.mindconsulting.s3storeboot.util.S3Lock;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Marshaller;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -133,12 +131,8 @@ public class RepositoryImpl implements S3Repository {
 
     @Override
     public void createBucket(S3CallContext callContext, String bucketName, String locationConstraint) {
-        String s1 = callContext.getParams().getVersionIdMarker();
-        String s2 = callContext.getQueryString();
-        String s3 = callContext.getHeader().getHost();
-        String s4 = callContext.getHeader().getXamzVersionId();
-        boolean s5 = callContext.getParams().listVersions();
-        Map<String,String> s6 = callContext.getParams().getAllParams();
+//        Map<String,String> s6 = callContext.getParams().getAllParams();
+
 
         Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
         Path metaBucket = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
@@ -154,7 +148,15 @@ public class RepositoryImpl implements S3Repository {
             logger.info("开始调用BucketHandler.createBucket（）:===========");
             boolean isBucketExist = this.checkBucketExist(bucketName);
             if(isBucketExist == false) {
-                BucketHandler.createBucket(bucketName,bs);
+                Map<String,String> header = SerializationUtil.deserializeMap(bs);
+                String version_status = header.get("version_status");
+                if(version_status == null || "".equals(version_status)) {
+                    header.put("version_status","Off");
+                }
+                byte[] new_byte = SerializationUtil.serializeMap(header);
+
+
+                BucketHandler.createBucket(bucketName,new_byte);
             }
             logger.info("创建bucket完毕");
 
@@ -163,6 +165,106 @@ public class RepositoryImpl implements S3Repository {
             throw new InternalErrorException(bucketName, callContext.getRequestId());
         }
     }
+
+    @Override
+    public void updateBucketVersion(S3CallContext callContext, String bucketName) {
+        try {
+            InputStream inputStream = callContext.getContent();
+            byte[] bs = toByteArray(inputStream);
+            String versionXMLMsg = new String(bs);
+            Document doc = this.stringTOXml(versionXMLMsg);
+            String nodePath = "/VersioningConfiguration/Status";
+            String version_status = this.getNodeValue(doc,nodePath);
+            Map<String,byte[]> map = new HashMap<>();
+            try {
+              map = BucketHandler.getBucketByName(bucketName);
+            } catch (ServiceException e) {
+                e.printStackTrace();
+            }
+            byte[] bytes = map.get(bucketName);
+            Map<String,String> header = SerializationUtil.deserializeMap(bytes);
+            String status = header.get("version_status");
+            if(status == null || !status.equals(version_status)) {
+                header.put("version_status",version_status);
+                bytes = SerializationUtil.serializeMap(header);
+                try {
+                    BucketHandler.updateBucket(bucketName,bytes);
+                } catch (ServiceException e) {
+                    e.printStackTrace();
+                }
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public VersioningConfiguration getBucketVersioning(S3CallContext callContext, String bucketName) {
+        Map<String,byte[]> map = new HashMap<>();
+        try {
+            map = BucketHandler.getBucketByName(bucketName);
+        } catch (ServiceException e) {
+            e.printStackTrace();
+        }
+        byte[] bs = map.get(bucketName);
+        Map<String,String> header = SerializationUtil.deserializeMap(bs);
+        String version_status = header.get("version_status");
+        VersioningConfiguration versioningConfiguration = new VersioningConfiguration();
+        versioningConfiguration.setStatus(version_status);
+        return versioningConfiguration;
+    }
+
+    public static byte[] toByteArray(InputStream is) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try {
+            byte[] b = new byte[1024];
+            int n = 0;
+            while ((n = is.read(b)) != -1) {
+                output.write(b, 0, n);
+            }
+            return output.toByteArray();
+        } finally {
+            output.close();
+        }
+    }
+
+    /**
+     * @return Document 对象
+     */
+    public Document stringTOXml(String str) {
+
+        StringBuilder sXML = new StringBuilder();
+        sXML.append(str);
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+        Document doc = null;
+        try {
+            InputStream is = new ByteArrayInputStream(sXML.toString().getBytes("utf-8"));
+            doc = dbf.newDocumentBuilder().parse(is);
+            is.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return doc;
+    }
+
+    /**
+     *
+     * @param document
+     * @return 某个节点的值 前提是需要知道xml格式，知道需要取的节点相对根节点所在位置
+     */
+    public String getNodeValue(Document document, String nodePaht) {
+        XPathFactory xpfactory = XPathFactory.newInstance();
+        XPath path = xpfactory.newXPath();
+        String servInitrBrch = "";
+        try {
+            servInitrBrch = path.evaluate(nodePaht, document);
+        } catch (XPathExpressionException e) {
+            e.printStackTrace();
+        }
+        return servInitrBrch;
+    }
+
 
     private byte[] writeMetaFile(Path meta, S3CallContext callContext, String... additional) throws IOException, JAXBException {
         Map<String, String> header = callContext.getHeader().getFullHeader();
@@ -174,7 +276,7 @@ public class RepositoryImpl implements S3Repository {
         }
         byte[] bs = SerializationUtil.serializeMap(header);
         System.out.println("byte长度："+bs.length);
-        header = SerializationUtil.deserializeMap(bs);
+//        Map<String, String> header = SerializationUtil.deserializeMap(bs);
         Files.createDirectories(meta.getParent());
         try (OutputStream out = Files.newOutputStream(meta)) {
             Marshaller m = jaxbContext.createMarshaller();
@@ -194,23 +296,6 @@ public class RepositoryImpl implements S3Repository {
     public void deleteBucket(S3CallContext callContext, String bucketName) {
         //1、判断bucket是否存在
         boolean isExistBucket = this.checkBucketExist(bucketName);
-//        if(isExistBucket == false) {
-//            throw new NoSuchBucketException(bucketName, callContext.getRequestId());
-//        }
-//
-//        //2、如果bucket存在判断bucket下是否存在文件
-//        Map<String,byte[]> map = new HashMap<>();
-//        try {
-//            String fileName = ObjectHandler.listObject(map,bucketName,null,1000);
-//            if(fileName != null) {
-//                new BucketNotEmptyException(bucketName, callContext.getRequestId());
-//            }
-//        } catch (ServiceException e) {
-//            e.printStackTrace();
-//        }
-//        if(map.size() > 0 ) {
-//            new BucketNotEmptyException(bucketName, callContext.getRequestId());
-//        }
         //3、调用删除接口
         try {
             BucketHandler.deleteBucket(bucketName);
@@ -221,6 +306,7 @@ public class RepositoryImpl implements S3Repository {
 
     @Override
     public void createObject(S3CallContext callContext, String bucketName, String objectKey) {
+
         //1、判断链上是否存在此bucket
         boolean isBucketExist = this.checkBucketExist(bucketName);
         if(!isBucketExist) {
@@ -242,10 +328,9 @@ public class RepositoryImpl implements S3Repository {
                 e.printStackTrace();
             }
         }
-
-
-        Path obj = dataBucket.resolve(objectKey);
-        Path meta = metaBucket.resolve(objectKey + META_XML_EXTENSION);
+        String tempFileName = UUID.randomUUID().toString();
+        Path meta = metaBucket.resolve(tempFileName + META_XML_EXTENSION);
+        Path obj = dataBucket.resolve(tempFileName);
         Long contentLength = callContext.getHeader().getContentLength();
 
         String md5 = callContext.getHeader().getContentMD5();
@@ -258,7 +343,7 @@ public class RepositoryImpl implements S3Repository {
 
             DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
             try (OutputStream out = Files.newOutputStream(obj)) {
-                long bytesCopied = StreamUtils.copy(in, out);
+                long bytesCopied = StreamUtils.copy(din, out);
                 byte[] md5bytes = din.getMessageDigest().digest();
                 String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
                 String storageMd5base16 = Encoding.toHex(md5bytes);
@@ -269,7 +354,7 @@ public class RepositoryImpl implements S3Repository {
                     Files.deleteIfExists(meta);
                     throw new InvalidDigestException(objectKey, callContext.getRequestId());
                 }
-
+                out.close();
                 S3ResponseHeader header = new S3ResponseHeaderImpl();
                 header.setEtag(inQuotes(storageMd5base16));
                 header.setDate(new Date(Files.getLastModifiedTime(obj).toMillis()));
@@ -284,6 +369,9 @@ public class RepositoryImpl implements S3Repository {
                 } catch (ServiceException e) {
                     e.printStackTrace();
                 }
+                // 如果文件不存在  将文件上传至超级节点
+                String filePath = repoBaseUrl + "/" + bucketName+"/data/"+tempFileName;
+                UploadObject uploadObject = new UploadObject(filePath);
 
                 if(isFileExist == false && contentLength == 0) {
                     try {
@@ -293,9 +381,7 @@ public class RepositoryImpl implements S3Repository {
                         e.printStackTrace();
                     }
                 }else if (isFileExist == false && contentLength > 0) {
-                    // 如果文件不存在  将文件上传至超级节点
-                    String filePath = obj.toString();
-                    UploadObject uploadObject = new UploadObject(filePath);
+
                     try {
                         uploadObject.upload();
                         ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
@@ -307,18 +393,46 @@ public class RepositoryImpl implements S3Repository {
                     }
 
                 } else {
-                    logger.error("文件在链上已经存在或者文件名重复");
-                    throw new InternalErrorException(objectKey, callContext.getRequestId());
+                    //判断当前bucket是否开启了版本控制，根据版本控制状态决定是否允许上传同名文件
+                    Map<String,byte[]> map = null;
+                    try {
+                        map = BucketHandler.getBucketByName(bucketName);
+                    } catch (ServiceException e) {
+                        e.printStackTrace();
+                    }
+                    byte[] bucketMeta = map.get(bucketName);
+                    Map<String,String> bucketHeader = new HashMap<>();
+                    bucketHeader = SerializationUtil.deserializeMap(bucketMeta);
+                    String version_status = bucketHeader.get("version_status");
+
+                    if("Off".equals(version_status) || "OFF".equals(version_status) || version_status==null || "".equals(version_status)) {
+                        logger.error("文件在链上已经存在或者文件名重复");
+                        throw new InternalErrorException(objectKey, callContext.getRequestId());
+                    } else if("Suspended ".equals(version_status) || "SUSPENDED".equals(version_status)) {
+                        logger.error("当前bucket版本控制已经被暂停");
+                        throw new InternalErrorException(objectKey, callContext.getRequestId());
+                    } else if("Enabled".equals(version_status) || "ENABLED".equals(version_status)) {
+                        //同名文件生成历史版本
+                        try {
+                            if(contentLength == 0) {
+                                ObjectHandler.createObject(bucketName, objectKey, new ObjectId(defaultVNU), metaByte);
+                            } else {
+                                uploadObject.upload();
+                                ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
+                            }
+
+                        } catch (ServiceException e) {
+                            e.printStackTrace();
+                        }
+                    }
                 }
             }
 
         } catch (IOException | NoSuchAlgorithmException | JAXBException e) {
             logger.error("internal error", e);
-//            throw new InternalErrorException(objectKey, callContext.getRequestId());
             e.printStackTrace();
         } catch (InterruptedException e) {
             logger.error("interrupted thread", e);
-//            throw new InternalErrorException(objectKey, callContext.getRequestId());
             e.printStackTrace();
         } finally {
             unlock(metaBucket, objectKey, callContext);
@@ -327,19 +441,179 @@ public class RepositoryImpl implements S3Repository {
     }
 
     @Override
-    public void createMultipartObject(S3CallContext callContext, String bucketName, String objectKey) {
-//        MultipartUpload multipartUpload = new MultipartUpload();
-//        InitiateMultipartUp
-//        ObjectMetadata meta = new ObjectMetadata();
-//        meta.setContentLength(2*1024*1024);
-//
-//        InitiateMultipartUploadRequest initiateMultipartUploadRequest = new InitiateMultipartUploadRequest(bucketName,objectKey,meta);
-//        InitiateMultipartUpload initiateMultipartUpload =
-//        String uploadId = initiateMultipartUploadRequest.
+    public InitiateMultipartUploadResult initiateMultipartUpload(S3CallContext callContext, String bucketName, String objectKey) {
 
-
+        String uploadId = UUID.randomUUID().toString();
+        InitiateMultipartUploadResult result = new InitiateMultipartUploadResult(bucketName,objectKey,uploadId);
+        return result;
     }
 
+    @Override
+    public void createUploadPart(S3CallContext callContext, String bucketName, String objectKey) {
+        String uploadId = callContext.getParams().getAllParams().get("uploadId");
+        Integer partNumber = Integer.valueOf(callContext.getParams().getAllParams().get("partNumber"));
+        //1、判断链上是否存在此bucket
+        boolean isBucketExist = this.checkBucketExist(bucketName);
+        if(!isBucketExist) {
+            throw new NoSuchBucketException(bucketName, callContext.getRequestId());
+        }
+        Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
+        Path metaBucket = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
+        if (!Files.exists(dataBucket)){
+            try {
+                Files.createDirectories(dataBucket);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        if(!Files.exists((metaBucket))) {
+            try {
+                Files.createDirectories(metaBucket);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        //分片文件
+        String tempFileName = UUID.randomUUID().toString();
+        Path obj = dataBucket.resolve(tempFileName);
+        Path meta = metaBucket.resolve(objectKey + META_XML_EXTENSION);
+        Long contentLength = callContext.getHeader().getContentLength();
+
+        String md5 = callContext.getHeader().getContentMD5();
+        try (InputStream in = callContext.getContent()){
+            if (!Files.exists(obj)) {
+                Files.createDirectories(obj.getParent());
+                Files.createFile(obj);
+            }
+
+            //文件路径 要创建的文件，把分片数据写到此文件中
+            Path file = dataBucket.resolve(objectKey);
+            if(!Files.exists(file)) {
+                Files.createDirectories((file.getParent()));
+                Files.createFile(file);
+
+            }
+            DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
+            byte[] md5bytes = null;
+            try (OutputStream out = Files.newOutputStream(obj)) {
+                long bytesCopied = 0;
+                try {
+                    bytesCopied = StreamUtils.copy(in, out);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                md5bytes = din.getMessageDigest().digest();
+                String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
+                String storageMd5base16 = Encoding.toHex(md5bytes);
+
+                if (contentLength != null && contentLength != bytesCopied
+                        || md5 != null && !md5.equals(storageMd5base64)) {
+                    Files.delete(obj);
+                    Files.deleteIfExists(meta);
+                    throw new InvalidDigestException(objectKey, callContext.getRequestId());
+                }
+
+                S3ResponseHeader header = new S3ResponseHeaderImpl();
+                String etag = inQuotes(storageMd5base16);
+                Date date = new Date(Files.getLastModifiedTime(obj).toMillis());
+                header.setEtag(etag);
+                header.setDate(date);
+                header.setServer("AmazonS3");
+
+                callContext.setResponseHeader(header);
+                Part part = new Part();
+                part.setEtag(etag);
+                part.setPartNumber(partNumber);
+                part.setSize(contentLength);
+                part.setLastModified(date);
+                part.setTempFilePath(obj.toString());
+                part.setFilePath(file.toString());
+                MuLtipartUploadCache.insert(uploadId,part);
+
+            }
+
+        } catch (IOException e) {
+            MuLtipartUploadCache.clearCache();
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            MuLtipartUploadCache.clearCache();
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public CompleteMultipartUploadResult completeMultipartUpload(S3CallContext callContext, String bucketName, String objectKey) {
+        String uploadId = callContext.getParams().getAllParams().get("uploadId");
+        List<Part> parts = MuLtipartUploadCache.getParts(uploadId);
+        String filePath = parts.get(0).getFilePath();
+
+        long size = 0l;
+        String etag = null;
+        OutputStream bos=null;
+        InputStream bis=null;
+        try {
+            bos=new BufferedOutputStream(new FileOutputStream(filePath));
+
+            for (Part part : parts) {
+                size += part.getSize();
+                File file = new File(part.getTempFilePath());
+                bis=new BufferedInputStream(new FileInputStream(file));
+                int len=0;
+                byte[] bt=new byte[1024];
+                while (-1!=(len=bis.read(bt))) {
+                    bos.write(bt, 0, len);
+                }
+                bis.close();
+
+               //拼接完成之后删除分片文件
+                Path obj = Paths.get(part.getTempFilePath());
+                Files.delete(obj);
+            }
+            bos.flush();
+            bos.close();
+
+            System.out.println("文件合并成功。。。。。size====="+size);
+            // 如果文件不存在  将文件上传至超级节点
+            UploadObject uploadObject = new UploadObject(filePath);
+            Path meta = Paths.get(filePath + META_XML_EXTENSION);
+            Path obj = Paths.get(filePath);
+            InputStream in = new FileInputStream(filePath);
+            DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
+            byte[] md5bytes = din.getMessageDigest().digest();
+            System.out.println();
+            String storageMd5base16 = Encoding.toHex(md5bytes);
+
+            etag = inQuotes(storageMd5base16);
+            //设置Header
+            S3ResponseHeader header = new S3ResponseHeaderImpl();
+            header.setEtag(etag);
+            header.setDate(new Date(Files.getLastModifiedTime(obj).toMillis()));
+//            header.setContentLength(size);
+            callContext.setResponseHeader(header);
+            String contentLength = String.valueOf(size);
+            byte[] metaByte = writeMetaFile(meta, callContext, S3Constants.ETAG, inQuotes(storageMd5base16));
+            Map<String,String> map = SerializationUtil.deserializeMap(metaByte);
+            map.put("contentLength",contentLength);
+            map.put("content-length",contentLength);
+            byte[] newHeaderByte = SerializationUtil.serializeMap(map);
+            try {
+                uploadObject.upload();
+                ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), newHeaderByte);
+                System.out.println("上传成功");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }catch (Exception e) {
+            e.printStackTrace();
+        }
+        CompleteMultipartUploadResult result = new CompleteMultipartUploadResult();
+        String location = "http://"+ bucketName + ".s3.amazonaws.com/" + objectKey ;
+        result.setBucketName(bucketName);
+        result.setLocation(location);
+        result.setEtag(etag);
+        result.setKey(objectKey);
+        return result;
+    }
 
     private void unlock(Path metaPath, String objectKey, S3CallContext callContext) {
         S3Lock lock;
@@ -462,6 +736,9 @@ public class RepositoryImpl implements S3Repository {
     @Override
     public void getObject(S3CallContext callContext, String bucketName, String objectKey, boolean head) {
 
+        if(callContext.getParams().getAllParams().containsKey("uploads")) {
+            return;
+        }
         boolean isBucketExist = this.checkBucketExist(bucketName);
         if(!isBucketExist) {
             throw new NoSuchBucketException(bucketName, callContext.getRequestId());
@@ -474,7 +751,7 @@ public class RepositoryImpl implements S3Repository {
             e.printStackTrace();
         }
         if(isObjectExist == false) {
-            throw new NoSuchKeyException(objectKey, callContext.getRequestId());
+//            throw new NoSuchKeyException(objectKey, callContext.getRequestId());
         }
         //防止链上有bucket，本地没有，下载文件之前提前创建，目的是从链上拿到的文件先放至缓存中
         Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
@@ -499,7 +776,19 @@ public class RepositoryImpl implements S3Repository {
         } catch (ServiceException e) {
             e.printStackTrace();
         }
-        InputStream is=obj.load();
+        InputStream is= null;
+        //如果range不为空，则表示范围下载 range格式 例：range: "bytes=0-2000"
+        String range = callContext.getHeader().getRange();
+        if(range == null) {
+            is = obj.load();
+        } else {
+            String newRange = range.replace("bytes=","");
+            logger.info("range======"+range);
+            long start = Long.parseLong(newRange.substring(0,newRange.indexOf("-")));
+            long end = Long.parseLong(newRange.substring(newRange.indexOf("-")+1));
+            logger.info("start======"+start + "   /end======"+end);
+            is = obj.load(start,end);
+        }
         try {
             S3ResponseHeader header = new S3ResponseHeaderImpl();
             header.setContentLength(obj.getLength());

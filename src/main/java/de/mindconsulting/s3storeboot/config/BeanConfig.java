@@ -48,8 +48,6 @@ public class BeanConfig {
     public String url;
     @Value("${s3server.username}")
     String username;
-    @Value("${s3server.contractAccount}")
-    String contractAccount;
 
     @ConditionalOnMissingBean
     @Bean
@@ -84,7 +82,6 @@ public class BeanConfig {
         cfg.setSuperNodeAddrs(list);
         cfg.setSuperNodeID(superNodeID);
         cfg.setTmpFilePath(fsRepoRoot);
-        cfg.setContractAccount(contractAccount);
         cfg.setUsername(username);
         ClientInitor.init(cfg);
     }

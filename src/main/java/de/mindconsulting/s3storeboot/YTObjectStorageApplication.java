@@ -13,7 +13,6 @@ import org.tanukisoftware.wrapper.WrapperManager;
 
 @Component
 @SpringBootApplication
-@EnableAutoConfiguration(exclude={MongoAutoConfiguration.class})
 @ComponentScan(basePackages = {"com.s3.user.controller"})
 @ComponentScan(basePackages = {"de.*"})
 public class YTObjectStorageApplication implements WrapperListener{
