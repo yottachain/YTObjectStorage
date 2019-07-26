@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 
 import java.io.*;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 import static org.junit.Assert.assertEquals;
@@ -56,20 +57,34 @@ public class S3StoreBootApplicationTests {
 	}
 	@Test
 	public void testSubStr(){
-		String range = "bytes=0-2000";
-		String newRange = range.replace("bytes=","");
-		String start = newRange.substring(0,newRange.indexOf("-"));
-		String end = newRange.substring(newRange.indexOf("-")+1);
-		long start1 = Long.parseLong(start);
-		long end1 = Long.parseLong(end);
-		System.out.println("==================");
+		SimpleDateFormat sdf1 = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+		sdf1.setTimeZone(TimeZone.getTimeZone("UTC"));
+		String str = sdf1.format(new Date());
+		System.out.println("tz================"+str);
 	}
 	@Test
 	public void testString() {
-		String str = "dsksksk";
-		str = "Off";
-		System.out.println("ssssssss======"+str);
-		System.out.println("ssssssss======"+str);
+		AmazonS3Client client = this.getClient();
+		ListVersionsRequest request = new ListVersionsRequest();
+		request.withBucketName("wqqqq").withMaxResults(100).withVersionIdMarker(null);
+		VersionListing objects = client.listVersions(request);
+		System.out.println("======================");
+//		ObjectListing objectListing = client.listObjects("versions");
+//		String nextMarker = null;
+//		String nextVersionIdMarker = null;
+//		do{
+//			ListVersionsRequest request = new ListVersionsRequest();
+//			request.withBucketName("versions").withMaxResults(100).withVersionIdMarker(nextVersionIdMarker);
+//			VersionListing objects = client.listVersions(request);
+//			for (S3VersionSummary s3VersionSummary : objects.getVersionSummaries()) {
+//				System.out.println(s3VersionSummary.getKey());
+//				System.out.println(s3VersionSummary.getVersionId());
+//			}
+//		} while (objectListing.isTruncated());
+//
+//
+//		VersionListing listing = client.listVersions(request);
+//		System.out.println("list size ====" + listing);
 	}
 	@Test
 	public void testVersionObject() {

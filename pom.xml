@@ -57,81 +57,21 @@
 			<scope>provided</scope>
 		</dependency>
 
-
-		<!--<dependency>-->
-			<!--<groupId>MsgDef</groupId>-->
-			<!--<artifactId>MsgDef</artifactId>-->
-			<!--<version>1.0</version>-->
-			<!--<scope>system</scope>-->
-			<!--<systemPath>${basedir}/src/main/resources/lib/MsgDef-1.0-SNAPSHOT.jar</systemPath>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>MsgDef</groupId>-->
-			<!--<artifactId>MsgDef</artifactId>-->
-			<!--<version>1.0-SNAPSHOT</version>-->
-			<!--&lt;!&ndash;<scope>system</scope>&ndash;&gt;-->
-			<!--&lt;!&ndash;<systemPath>${basedir}/src/main/resources/lib/MsgDef-1.0-SNAPSHOT.jar</systemPath>&ndash;&gt;-->
-		<!--</dependency>-->
-
-		<!--<dependency>-->
-			<!--<groupId>nodemgmt-java-binding</groupId>-->
-			<!--<artifactId>nodemgmt-java-binding</artifactId>-->
-			<!--<version>1.0</version>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>YTSDK</groupId>-->
-			<!--<artifactId>YTSDK</artifactId>-->
-			<!--<version>1.0</version>-->
-			<!--<scope>system</scope>-->
-			<!--<systemPath>${basedir}/src/main/resources/lib/YTSDK-1.0-SNAPSHOT.jar</systemPath>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>YTSDK</groupId>-->
-			<!--<artifactId>YTSDK</artifactId>-->
-			<!--<version>1.0-SNAPSHOT</version>-->
-			<!--&lt;!&ndash;<scope>system</scope>&ndash;&gt;-->
-			<!--&lt;!&ndash;<systemPath>${basedir}/src/main/resources/lib/YTSDK-1.0-SNAPSHOT.jar</systemPath>&ndash;&gt;-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>YTSN</groupId>-->
-			<!--<artifactId>YTSN</artifactId>-->
-			<!--<version>1.0</version>-->
-			<!--<scope>system</scope>-->
-			<!--<systemPath>${basedir}/src/main/resources/lib/YTSN-1.0-SNAPSHOT.jar</systemPath>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>YTSN</groupId>-->
-			<!--<artifactId>YTSN</artifactId>-->
-			<!--<version>1.0-SNAPSHOT</version>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>io.yottachain</groupId>-->
-			<!--<artifactId>p2phost</artifactId>-->
-			<!--<version>0.1</version>-->
-			<!--<scope>system</scope>-->
-			<!--<systemPath>${basedir}/src/main/resources/lib/p2p-wrapper-0.1.jar</systemPath>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>wrapper</groupId>-->
-			<!--<artifactId>wrapper</artifactId>-->
-			<!--<scope>system</scope>-->
-			<!--<version>3.51</version>-->
-			<!--<systemPath>${basedir}/src/main/resources/lib/wrapper-3.51.jar</systemPath>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>MsgDef</groupId>-->
-			<!--<artifactId>MsgDef</artifactId>-->
-			<!--<version>1.0-SNAPSHOT</version>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>YTSN</groupId>-->
-			<!--<artifactId>YTSN</artifactId>-->
-			<!--<version>1.0-SNAPSHOT</version>-->
-		<!--</dependency>-->
 		<dependency>
 			<groupId>YTSDK</groupId>
 			<artifactId>YTSDK</artifactId>
 			<version>1.0-SNAPSHOT</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.mongodb</groupId>
+					<artifactId>mongodb-driver</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.mongodb</groupId>
+			<artifactId>bson</artifactId>
+			<version>3.8.2</version>
 		</dependency>
 		<dependency>
 			<groupId>com.github.snksoft</groupId>
@@ -225,16 +165,6 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-        <!--<dependency>-->
-            <!--<groupId>com.amazonaws</groupId>-->
-            <!--<artifactId>aws-java-sdk-core</artifactId>-->
-            <!--<version>RELEASE</version>-->
-        <!--</dependency>-->
-        <!--<dependency>-->
-            <!--<groupId>com.amazonaws</groupId>-->
-            <!--<artifactId>aws-java-sdk-s3</artifactId>-->
-            <!--<version>RELEASE</version>-->
-        <!--</dependency>-->
 		<dependency>
 			<groupId>log4j</groupId>
 			<artifactId>log4j</artifactId>
