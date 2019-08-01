@@ -45,6 +45,7 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 public class RepositoryImpl implements S3Repository {
+    private static final org.apache.log4j.Logger LOG = org.apache.log4j.Logger.getLogger(RepositoryImpl.class);
     public static final String META_XML_EXTENSION = "_meta.xml";
     public static final String USER_FOLDER = "users";
     public static final String SYSTEM_DEFAULT_USER = "SYSTEM";
@@ -394,19 +395,24 @@ public class RepositoryImpl implements S3Repository {
             }
         }
         String tempFileName = UUID.randomUUID().toString();
+//        LOG.info("tempFileName========"+tempFileName);
         Path meta = metaBucket.resolve(tempFileName + META_XML_EXTENSION);
         Path obj = dataBucket.resolve(tempFileName);
         Long contentLength = callContext.getHeader().getContentLength();
-
+//        LOG.info("怎么回事？");
         String md5 = callContext.getHeader().getContentMD5();
-        lock(metaBucket, objectKey, S3Lock.LockType.write, callContext);
+//        LOG.info("MD5======试试===？" + md5);
+        lock(metaBucket, tempFileName, S3Lock.LockType.write, callContext);
         try (InputStream in = callContext.getContent()) {
-            if (!Files.exists(obj)) {
+//            if (!Files.exists(obj)) {
+//            LOG.info("MAMAMAM马可波罗");
                 Files.createDirectories(obj.getParent());
                 Files.createFile(obj);
-            }
+//            }
 
+//            LOG.info("成吉思汗哈哈哈");
             DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
+//            LOG.info("不给力啊");
             try (OutputStream out = Files.newOutputStream(obj)) {
                 long bytesCopied = StreamUtils.copy(din, out);
                 byte[] md5bytes = din.getMessageDigest().digest();
@@ -427,6 +433,7 @@ public class RepositoryImpl implements S3Repository {
 
                 Files.createDirectories(meta.getParent());
                 byte[] metaByte = writeMetaFile(meta, callContext, S3Constants.ETAG, inQuotes(storageMd5base16));
+//                LOG.info("问题原因在哪呢");
                 //判断文件在链上是否存在，默认不存在
                 boolean isFileExist = false;
                 try {
@@ -437,6 +444,7 @@ public class RepositoryImpl implements S3Repository {
                 }
                 // 如果文件不存在  将文件上传至超级节点
                 String filePath = repoBaseUrl + "/" + bucketName+"/data/"+tempFileName;
+                LOG.info("filePath===="+filePath);
                 UploadObject uploadObject = new UploadObject(filePath);
 
                 if(isFileExist == false && contentLength == 0) {
@@ -449,6 +457,7 @@ public class RepositoryImpl implements S3Repository {
                 }else if (isFileExist == false && contentLength > 0) {
 
                     try {
+//                        LOG.info("到这里了吗");
                         uploadObject.upload();
                         ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
                         System.out.println("上传成功");
@@ -472,10 +481,10 @@ public class RepositoryImpl implements S3Repository {
                     String version_status = bucketHeader.get("version_status");
 
                     if("Off".equals(version_status) || "OFF".equals(version_status) || version_status==null || "".equals(version_status)) {
-                        logger.error("文件在链上已经存在或者文件名重复");
+                        LOG.error("文件在链上已经存在或者文件名重复");
                         throw new InternalErrorException(objectKey, callContext.getRequestId());
                     } else if("Suspended ".equals(version_status) || "SUSPENDED".equals(version_status)) {
-                        logger.error("当前bucket版本控制已经被暂停");
+                        LOG.error("当前bucket版本控制已经被暂停");
                         throw new InternalErrorException(objectKey, callContext.getRequestId());
                     } else if("Enabled".equals(version_status) || "ENABLED".equals(version_status)) {
                         //同名文件生成历史版本
@@ -495,13 +504,13 @@ public class RepositoryImpl implements S3Repository {
             }
 
         } catch (IOException | NoSuchAlgorithmException | JAXBException e) {
-            logger.error("internal error", e);
+            LOG.error("internal error", e);
             e.printStackTrace();
         } catch (InterruptedException e) {
-            logger.error("interrupted thread", e);
+            LOG.error("interrupted thread", e);
             e.printStackTrace();
         } finally {
-            unlock(metaBucket, objectKey, callContext);
+            unlock(metaBucket, tempFileName, callContext);
 
         }
     }
@@ -542,7 +551,8 @@ public class RepositoryImpl implements S3Repository {
         //分片文件
         String tempFileName = UUID.randomUUID().toString();
         Path obj = dataBucket.resolve(tempFileName);
-        Path meta = metaBucket.resolve(objectKey + META_XML_EXTENSION);
+//        Path meta = metaBucket.resolve(objectKey + META_XML_EXTENSION);
+        Path meta = metaBucket.resolve(tempFileName + META_XML_EXTENSION);
         Long contentLength = callContext.getHeader().getContentLength();
         String sha256 = callContext.getHeader().getXamzContentSha256();
         String md5 = callContext.getHeader().getContentMD5();
@@ -584,7 +594,7 @@ public class RepositoryImpl implements S3Repository {
                 Date date = new Date(Files.getLastModifiedTime(obj).toMillis());
                 header.setEtag(etag);
                 header.setDate(date);
-                header.setContentLength(contentLength);
+                header.setContentLength(0l);
                 callContext.setResponseHeader(header);
                 Part part = new Part();
                 part.setEtag(etag);
@@ -598,10 +608,10 @@ public class RepositoryImpl implements S3Repository {
             }
 
         } catch (IOException e) {
-            MuLtipartUploadCache.clearCache();
+//            MuLtipartUploadCache.clearCache();
             e.printStackTrace();
         } catch (NoSuchAlgorithmException e) {
-            MuLtipartUploadCache.clearCache();
+//            MuLtipartUploadCache.clearCache();
             e.printStackTrace();
         }
     }
@@ -660,11 +670,11 @@ public class RepositoryImpl implements S3Repository {
                 uploadObject.upload();
                 ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), newHeaderByte);
                 System.out.println("上传成功");
-                //删除分片文件
-                for(Part part : parts) {
-                Path tempFile = Paths.get(part.getTempFilePath());
-                Files.delete(tempFile);
-                }
+//                //删除分片文件
+//                for(Part part : parts) {
+//                Path tempFile = Paths.get(part.getTempFilePath());
+//                Files.delete(tempFile);
+//                }
             } catch (Exception e) {
                 e.printStackTrace();
             }
