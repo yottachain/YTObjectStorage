@@ -451,13 +451,13 @@ public class RepositoryImpl implements S3Repository {
                     try {
                         ObjectId VNU = new ObjectId(defaultVNU);
                         ObjectHandler.createObject(bucketName, objectKey, VNU, metaByte);
+
                     } catch (ServiceException e) {
                         e.printStackTrace();
                     }
                 }else if (isFileExist == false && contentLength > 0) {
 
                     try {
-//                        LOG.info("到这里了吗");
                         uploadObject.upload();
                         ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
                         System.out.println("上传成功");
@@ -510,7 +510,16 @@ public class RepositoryImpl implements S3Repository {
             LOG.error("interrupted thread", e);
             e.printStackTrace();
         } finally {
-            unlock(metaBucket, tempFileName, callContext);
+            try {
+                unlock(metaBucket, tempFileName, callContext);
+                //删除缓存文件
+                LOG.info("Delete ******* CACHE FILE...........");
+
+                Files.delete(obj);
+                Files.deleteIfExists(meta);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
 
         }
     }
@@ -608,10 +617,8 @@ public class RepositoryImpl implements S3Repository {
             }
 
         } catch (IOException e) {
-//            MuLtipartUploadCache.clearCache();
             e.printStackTrace();
         } catch (NoSuchAlgorithmException e) {
-//            MuLtipartUploadCache.clearCache();
             e.printStackTrace();
         }
     }
@@ -644,6 +651,12 @@ public class RepositoryImpl implements S3Repository {
             bos.close();
 
             System.out.println("文件合并成功。。。。。size====="+size);
+            //                //删除分片文件
+            for(Part part : parts) {
+                Path tempFile = Paths.get(part.getTempFilePath());
+                Files.delete(tempFile);
+            }
+
             // 如果文件不存在  将文件上传至超级节点
             UploadObject uploadObject = new UploadObject(filePath);
             Path meta = Paths.get(filePath + META_XML_EXTENSION);
@@ -651,7 +664,6 @@ public class RepositoryImpl implements S3Repository {
             InputStream in = new FileInputStream(filePath);
             DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
             byte[] md5bytes = din.getMessageDigest().digest();
-            System.out.println();
             String storageMd5base16 = Encoding.toHex(md5bytes);
 
             etag = inQuotes(storageMd5base16);
@@ -670,16 +682,28 @@ public class RepositoryImpl implements S3Repository {
                 uploadObject.upload();
                 ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), newHeaderByte);
                 System.out.println("上传成功");
-//                //删除分片文件
+////                //删除分片文件
 //                for(Part part : parts) {
-//                Path tempFile = Paths.get(part.getTempFilePath());
-//                Files.delete(tempFile);
+//                    Path tempFile = Paths.get(part.getTempFilePath());
+//                    Files.delete(tempFile);
 //                }
+                //删除缓存文件
+                LOG.info("Delete ******* CACHE FILE...........");
+                in.close();
+                din.close();
+
+                Files.deleteIfExists(meta);
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }catch (Exception e) {
             e.printStackTrace();
+        }finally {
+            try {
+                Files.delete(Paths.get(filePath));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
         CompleteMultipartUploadResult result = new CompleteMultipartUploadResult();
         String location = "http://"+ bucketName + ".s3.amazonaws.com/" + objectKey ;
@@ -726,61 +750,52 @@ public class RepositoryImpl implements S3Repository {
 
     @Override
     public S3Object copyObject(S3CallContext callContext, String srcBucket, String srcObjectKey, String destBucket, String destObjectKey, boolean copyMetadata) {
-        Path srcBucketData = Paths.get(repoBaseUrl, srcBucket, DATA_FOLDER);
-        Path srcBucketMeta = Paths.get(repoBaseUrl, srcBucket, META_FOLDER);
-        if (!Files.exists(srcBucketData))
+
+        boolean isSrcBucketExist = this.checkBucketExist(srcBucket);
+        if(!isSrcBucketExist) {
             throw new NoSuchBucketException(srcBucket, callContext.getRequestId());
-        Path srcObject = srcBucketData.resolve(srcObjectKey);
-        Path srcObjectMeta = srcBucketMeta.resolve(srcObjectKey + META_XML_EXTENSION);
-
-        Path destBucketData = Paths.get(repoBaseUrl, destBucket, DATA_FOLDER);
-        Path destBucketMeta = Paths.get(repoBaseUrl, destBucket, META_FOLDER);
-        if (!Files.exists(destBucketData))
-            throw new NoSuchBucketException(destBucket, callContext.getRequestId());
-        Path destObject = destBucketData.resolve(destObjectKey);
-        Path destObjectMeta = destBucketMeta.resolve(destObjectKey + META_XML_EXTENSION);
-
-
-        if (!Files.exists(srcObject))
-            throw new NoSuchKeyException(srcObjectKey, callContext.getRequestId());
-
-        lock(srcBucketMeta, srcObjectKey, S3Lock.LockType.read, callContext);
-        lock(destBucketMeta, destObjectKey, S3Lock.LockType.write, callContext);
-
-        S3Metadata srcMetadata = loadMetaFile(srcObjectMeta);
-        try (InputStream in = Files.newInputStream(srcObject)) {
-            if (!Files.exists(destObject)) {
-                Files.createDirectories(destObject.getParent());
-                Files.createFile(destObject);
-            }
-            try (OutputStream out = Files.newOutputStream(destObject)) {
-                long bytesCopied = StreamUtils.copy(in, out);
-                if (copyMetadata) {
-                    if (Files.exists(srcObjectMeta)) {
-                        writeMetaFile(destObjectMeta, callContext, toArray(srcMetadata));
-                    }
-                } else {
-                    writeMetaFile(destObjectMeta, callContext);
-                }
-            }
-            S3Metadata destMetadata = loadMetaFile(destObjectMeta);
-            return new S3ObjectImpl(destObjectKey,
-                    new Date(destObject.toFile().lastModified()),
-                    destBucket, destObject.toFile().length(),
-                    new S3UserImpl(),
-                    destMetadata,
-                    null, destMetadata.get(S3Constants.CONTENT_TYPE),
-                    destMetadata.get(S3Constants.ETAG), destMetadata.get(S3Constants.VERSION_ID), false, true);
-        } catch (IOException | JAXBException e) {
-            logger.error("internal error", e);
-            throw new InternalErrorException(destObjectKey, callContext.getRequestId());
-        } catch (InterruptedException e) {
-            logger.error("interrupted thread", e);
-            throw new InternalErrorException(destObjectKey, callContext.getRequestId());
-        } finally {
-            unlock(srcBucketMeta, srcObjectKey, callContext);
-            unlock(destBucketMeta, destObjectKey, callContext);
         }
+        boolean isDestBucketExist = this.checkBucketExist(destBucket);
+        if(!isDestBucketExist) {
+            throw new NoSuchBucketException(destBucket, callContext.getRequestId());
+        }
+        boolean isExistObject = false;
+        boolean isDestObject = false;
+
+        try {
+            isExistObject = ObjectHandler.isExistObject(srcBucket,destObjectKey,null);
+            isDestObject = ObjectHandler.isExistObject(destBucket,destObjectKey,null);
+        } catch (ServiceException e) {
+            e.printStackTrace();
+        }
+        if(!isExistObject) {
+            throw new NoSuchKeyException(srcObjectKey, callContext.getRequestId());
+        }
+
+        if(isDestObject) {
+            LOG.error("文件在链上已经存在或者文件名重复");
+            throw new InternalErrorException(destObjectKey, callContext.getRequestId());
+        }
+
+
+        FileMetaMsg fileMetaMsg = null;
+        try {
+            fileMetaMsg = ObjectHandler.copyObject(srcBucket,destObjectKey,destBucket,destObjectKey);
+            LOG.info("COPY OBJECT SUCCESS");
+        } catch (ServiceException e) {
+            e.printStackTrace();
+        }
+
+        Map<String, String> header = SerializationUtil.deserializeMap(fileMetaMsg.getMeta());
+        S3Metadata s3Metadata = getMetaMessage(header);
+        return new S3ObjectImpl(destObjectKey,
+                    new Date(),
+                    destBucket,
+                    Long.parseLong(header.get("contentLength")),
+                    new S3UserImpl(),
+                    s3Metadata,
+                    null, s3Metadata.get(S3Constants.CONTENT_TYPE),
+                    s3Metadata.get(S3Constants.ETAG), s3Metadata.get(S3Constants.VERSION_ID), false, true);
 
     }
 
@@ -820,17 +835,21 @@ public class RepositoryImpl implements S3Repository {
         }
         //isObjectExist 为true,表示可以从链上获取到文件，为false则说明当前文件在当前bucket下不存在
         boolean isObjectExist = false;
+        ObjectId versionId = null;
         try {
             String versionIdd = callContext.getParams().getAllParams().get("versionId");
             if(null == versionIdd || "".equals(versionIdd)) {
-                versionIdd = defaultVNU;
+                versionIdd = null;
+            }else {
+                versionId = new ObjectId(versionIdd);
             }
-            ObjectId versionId = new ObjectId(versionIdd);
+
             isObjectExist = ObjectHandler.isExistObject(bucketName,objectKey,versionId);
         } catch (ServiceException e) {
             e.printStackTrace();
         }
         if(isObjectExist == false) {
+            return;
 //            throw new NoSuchKeyException(objectKey, callContext.getRequestId());
         }
         //防止链上有bucket，本地没有，下载文件之前提前创建，目的是从链上拿到的文件先放至缓存中
@@ -852,7 +871,7 @@ public class RepositoryImpl implements S3Repository {
         }
         DownloadObject obj= null;
         try {
-            obj = new DownloadObject(bucketName, objectKey,null);
+            obj = new DownloadObject(bucketName, objectKey,versionId);
         } catch (ServiceException e) {
             e.printStackTrace();
         }
@@ -860,7 +879,9 @@ public class RepositoryImpl implements S3Repository {
         //如果range不为空，则表示范围下载 range格式 例：range: "bytes=0-2000"
         String range = callContext.getHeader().getRange();
         if(range == null) {
-            is = obj.load();
+            if(head == false) {
+                is = obj.load();
+            }
         } else {
             String newRange = range.replace("bytes=","");
             logger.info("range======"+range);
@@ -874,9 +895,9 @@ public class RepositoryImpl implements S3Repository {
             header.setContentLength(obj.getLength());
             header.setContentType("application/octetstream");
             callContext.setResponseHeader(header);
-            callContext.setContent(is);
-//            if (!head)
-//                callContext.setContent(is);
+//            callContext.setContent(is);
+            if (!head)
+                callContext.setContent(is);
         } catch (Exception e) {
             logger.error("internal error", e);
             e.printStackTrace();
@@ -1027,9 +1048,11 @@ public class RepositoryImpl implements S3Repository {
     @Override
     public void deleteObject(S3CallContext callContext, String bucketName, String objectKey) {
         String versionIdd = callContext.getParams().getAllParams().get("versionId");
-        ObjectId versionId = new ObjectId(versionIdd);
+        ObjectId versionId = new ObjectId(defaultVNU);
         if(null == versionIdd || "".equals(versionIdd)) {
             versionId = null;
+        } else {
+            versionId = new ObjectId(versionIdd);
         }
 
         boolean isExistBucket = this.checkBucketExist(bucketName);

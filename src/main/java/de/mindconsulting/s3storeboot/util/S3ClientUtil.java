@@ -21,7 +21,7 @@ public class S3ClientUtil {
         AmazonS3Client newClient = new AmazonS3Client(credentials,
                 new ClientConfiguration());
         newClient.setS3ClientOptions(new S3ClientOptions().withPathStyleAccess(true));
-        newClient.setEndpoint("http://localhost:8083/api/s3");
+        newClient.setEndpoint("http://localhost:8083");
         return newClient;
     }
 

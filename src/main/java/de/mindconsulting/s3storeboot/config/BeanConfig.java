@@ -49,6 +49,13 @@ public class BeanConfig {
     @Value("${s3server.username}")
     String username;
 
+    @Value("${s3server.uploadShardThreadNum}")
+    int uploadShardThreadNum;
+    @Value("${s3server.downloadThread}")
+    int downloadThread ;
+    @Value("${s3server.uploadBlockThreadNum}")
+    int uploadBlockThreadNum;
+
     @ConditionalOnMissingBean
     @Bean
     S3Repository s3Repository() {
@@ -83,6 +90,9 @@ public class BeanConfig {
         cfg.setSuperNodeID(superNodeID);
         cfg.setTmpFilePath(fsRepoRoot);
         cfg.setUsername(username);
+        cfg.setUploadShardThreadNum(uploadShardThreadNum);
+        cfg.setDownloadThread(downloadThread);
+        cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
         ClientInitor.init(cfg);
     }
 
