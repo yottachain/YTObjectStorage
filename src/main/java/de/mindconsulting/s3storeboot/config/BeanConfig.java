@@ -56,6 +56,17 @@ public class BeanConfig {
     @Value("${s3server.uploadBlockThreadNum}")
     int uploadBlockThreadNum;
 
+    @Value("${s3server.PNN}")
+    int PNN;
+
+    @Value("${s3server.PTR}")
+    int PTR;
+
+    @Value("${s3server.RETRYTIMES}")
+    int RETRYTIMES;
+    @Value("${s3server.zipkinServer}")
+    String zipkinServer;
+
     @ConditionalOnMissingBean
     @Bean
     S3Repository s3Repository() {
@@ -93,6 +104,10 @@ public class BeanConfig {
         cfg.setUploadShardThreadNum(uploadShardThreadNum);
         cfg.setDownloadThread(downloadThread);
         cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
+        cfg.setPNN(PNN);
+        cfg.setPTR(PTR);
+        cfg.setRETRYTIMES(RETRYTIMES);
+        cfg.setZipkinServer(zipkinServer);
         ClientInitor.init(cfg);
     }
 
