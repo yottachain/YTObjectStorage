@@ -1,5 +1,6 @@
 package de.mindconsulting.s3storeboot.config;
 
+import com.s3.user.controller.sync.task.SyncUploadSenderPool;
 import com.ytfs.client.ClientInitor;
 import com.ytfs.client.Configurator;
 import de.mc.ladon.s3server.logging.LoggingRepository;
@@ -67,10 +68,21 @@ public class BeanConfig {
     @Value("${s3server.zipkinServer}")
     String zipkinServer;
 
+    @Value("${s3server.SYNC}")
+    int status_sync;
+    @Value("${s3server.SYNC_DIR}")
+    String SYNC_DIR;
+    @Value("${s3server.SYNC_BUCKET}")
+    String syncBucketName;
+    @Value("${s3server.SYNC_COUNT}")
+    int count;
+
     @ConditionalOnMissingBean
     @Bean
     S3Repository s3Repository() {
-        return new RepositoryImpl(fsRepoRoot,accessKey,allowMaxSize);
+
+        SyncUploadSenderPool.init(SYNC_DIR,syncBucketName,count);
+        return new RepositoryImpl(fsRepoRoot,accessKey,allowMaxSize,status_sync,SYNC_DIR,syncBucketName,count);
     }
 
     @Bean

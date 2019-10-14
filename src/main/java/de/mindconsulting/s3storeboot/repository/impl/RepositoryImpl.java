@@ -2,12 +2,14 @@ package de.mindconsulting.s3storeboot.repository.impl;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.BaseEncoding;
+import com.s3.user.controller.sync.task.SyncUploadSenderPool;
 import com.ytfs.client.DownloadObject;
 import com.ytfs.client.UploadObject;
 import com.ytfs.client.s3.BucketHandler;
 import com.ytfs.client.s3.ObjectHandler;
 import com.ytfs.common.SerializationUtil;
 import com.ytfs.common.ServiceException;
+import com.ytfs.service.packet.s3.UploadFileReq;
 import com.ytfs.service.packet.s3.entities.FileMetaMsg;
 import de.mc.ladon.s3server.common.*;
 import de.mc.ladon.s3server.entities.api.*;
@@ -58,12 +60,20 @@ public class RepositoryImpl implements S3Repository {
     public final String accessKey;
     private final int allowMaxSize;
     private final String defaultVNU = "000000000000000000000000";
+    private final int status_sync;
+    private final String syncDir;
+    private final String syncBucketName;
+    private final int sync_count;
 
 
-    public RepositoryImpl(String repoBaseUrl,String accessKey,int allowMaxSize) {
+    public RepositoryImpl(String repoBaseUrl,String accessKey,int allowMaxSize,int status_sync,String syncDir,String syncBucketName,int sync_count) {
         this.repoBaseUrl = repoBaseUrl;
         this.accessKey = accessKey;
         this.allowMaxSize = allowMaxSize;
+        this.status_sync = status_sync;
+        this.syncDir =syncDir;
+        this.syncBucketName = syncBucketName;
+        this.sync_count=sync_count;
         try {
             jaxbContext = JAXBContext.newInstance(StorageMeta.class, UserData.class);
             userMap = new ConcurrentHashMap<>(loadUserFile());
@@ -360,148 +370,192 @@ public class RepositoryImpl implements S3Repository {
     @Override
     public void createObject(S3CallContext callContext, String bucketName, String objectKey) {
 
-        //1、判断链上是否存在此bucket
-        boolean isBucketExist = this.checkBucketExist(bucketName);
-        if(!isBucketExist) {
-            throw new NoSuchBucketException(bucketName, callContext.getRequestId());
-        }
-        Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
-        Path metaBucket = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
-        if (!Files.exists(dataBucket)){
-            try {
-                Files.createDirectories(dataBucket);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        if(!Files.exists((metaBucket))) {
-            try {
-                Files.createDirectories(metaBucket);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        String tempFileName = UUID.randomUUID().toString();
-        Path meta = metaBucket.resolve(tempFileName + META_XML_EXTENSION);
-        Path obj = dataBucket.resolve(tempFileName);
-        Long contentLength = callContext.getHeader().getContentLength();
-        String md5 = callContext.getHeader().getContentMD5();
-        lock(metaBucket, tempFileName, S3Lock.LockType.write, callContext);
-        try (InputStream in = callContext.getContent()) {
-            Files.createDirectories(obj.getParent());
-            Files.createFile(obj);
+        if (status_sync == 1) {
 
-            DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
-            try (OutputStream out = Files.newOutputStream(obj)) {
-                long bytesCopied = StreamUtils.copy(din, out);
-                byte[] md5bytes = din.getMessageDigest().digest();
-                String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
-                String storageMd5base16 = Encoding.toHex(md5bytes);
-
-                if (contentLength != null && contentLength != bytesCopied
-                        || md5 != null && !md5.equals(storageMd5base64)) {
-                    Files.delete(obj);
-                    Files.deleteIfExists(meta);
-                    throw new InvalidDigestException(objectKey, callContext.getRequestId());
-                }
-                out.close();
-                S3ResponseHeader header = new S3ResponseHeaderImpl();
-                header.setEtag(inQuotes(storageMd5base16));
-                header.setDate(new Date(Files.getLastModifiedTime(obj).toMillis()));
-                callContext.setResponseHeader(header);
-
-                Files.createDirectories(meta.getParent());
-                byte[] metaByte = writeMetaFile(meta, callContext, S3Constants.ETAG, inQuotes(storageMd5base16));
-                //判断文件在链上是否存在，默认不存在
-                boolean isFileExist = false;
+            Path syncPath = Paths.get(syncDir+"/"+syncBucketName);
+            if (!Files.exists(syncPath)) {
                 try {
-//                    ObjectId versinoId = new ObjectId(callContext.getParams().getAllParams().get("versionId"));
-                    isFileExist = ObjectHandler.isExistObject(bucketName,objectKey,null);
-                } catch (ServiceException e) {
+                    Files.createDirectories(syncPath);
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
-                // 如果文件不存在  将文件上传至超级节点
-                String filePath = repoBaseUrl + "/" + bucketName+"/data/"+tempFileName;
-                LOG.info("filePath===="+filePath);
-                UploadObject uploadObject = new UploadObject(filePath);
+            }
+            String[] objectList = new File(syncPath.toString()).list();
+            if(objectList.length <= sync_count) {
 
-                if(isFileExist == false && contentLength == 0) {
+                Path filePath = Paths.get(syncDir+"/"+syncBucketName+"/"+objectKey);
+                try (InputStream in = callContext.getContent()) {
+                    DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
+                    OutputStream out = Files.newOutputStream(filePath);
+                    long bytesCopied = StreamUtils.copy(din, out);
+                    byte[] md5bytes = din.getMessageDigest().digest();
+                    String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
+                    String md5 = callContext.getHeader().getContentMD5();
+                    if (callContext.getHeader().getContentLength() != null && callContext.getHeader().getContentLength() != bytesCopied
+                            || md5 != null && !md5.equals(storageMd5base64)) {
+                        Files.delete(filePath);
+                        throw new InvalidDigestException(objectKey, callContext.getRequestId());
+                    }
+                    out.close();
+                    UploadFileReq req = new UploadFileReq();
+                    req.setFilePath(filePath.toString());
+                    SyncUploadSenderPool.startSender(objectList.length,req);
+                }catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+//                SyncUploadSenderPool pool = new SyncUploadSenderPool();
+//                SyncUploadSenderPool.pu();
+
+
+
+            }
+
+
+        }else {
+            //1、判断链上是否存在此bucket
+            boolean isBucketExist = this.checkBucketExist(bucketName);
+            if(!isBucketExist) {
+                throw new NoSuchBucketException(bucketName, callContext.getRequestId());
+            }
+            Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
+            Path metaBucket = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
+            if (!Files.exists(dataBucket)){
+                try {
+                    Files.createDirectories(dataBucket);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            if(!Files.exists((metaBucket))) {
+                try {
+                    Files.createDirectories(metaBucket);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            String tempFileName = UUID.randomUUID().toString();
+            Path meta = metaBucket.resolve(tempFileName + META_XML_EXTENSION);
+            Path obj = dataBucket.resolve(tempFileName);
+            Long contentLength = callContext.getHeader().getContentLength();
+            String md5 = callContext.getHeader().getContentMD5();
+            lock(metaBucket, tempFileName, S3Lock.LockType.write, callContext);
+            try (InputStream in = callContext.getContent()) {
+                Files.createDirectories(obj.getParent());
+                Files.createFile(obj);
+
+                DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
+                try (OutputStream out = Files.newOutputStream(obj)) {
+                    long bytesCopied = StreamUtils.copy(din, out);
+                    byte[] md5bytes = din.getMessageDigest().digest();
+                    String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
+                    String storageMd5base16 = Encoding.toHex(md5bytes);
+
+                    if (contentLength != null && contentLength != bytesCopied
+                            || md5 != null && !md5.equals(storageMd5base64)) {
+                        Files.delete(obj);
+                        Files.deleteIfExists(meta);
+                        throw new InvalidDigestException(objectKey, callContext.getRequestId());
+                    }
+                    out.close();
+                    S3ResponseHeader header = new S3ResponseHeaderImpl();
+                    header.setEtag(inQuotes(storageMd5base16));
+                    header.setDate(new Date(Files.getLastModifiedTime(obj).toMillis()));
+                    callContext.setResponseHeader(header);
+
+                    Files.createDirectories(meta.getParent());
+                    byte[] metaByte = writeMetaFile(meta, callContext, S3Constants.ETAG, inQuotes(storageMd5base16));
+                    //判断文件在链上是否存在，默认不存在
+                    boolean isFileExist = false;
                     try {
-                        ObjectId VNU = new ObjectId(defaultVNU);
-                        ObjectHandler.createObject(bucketName, objectKey, VNU, metaByte);
-
+//                    ObjectId versinoId = new ObjectId(callContext.getParams().getAllParams().get("versionId"));
+                        isFileExist = ObjectHandler.isExistObject(bucketName,objectKey,null);
                     } catch (ServiceException e) {
-                        LOG.info("File upload failed.");
                         e.printStackTrace();
                     }
-                }else if (isFileExist == false && contentLength > 0) {
+                    // 如果文件不存在  将文件上传至超级节点
+                    String filePath = repoBaseUrl + "/" + bucketName+"/data/"+tempFileName;
+                    LOG.info("filePath===="+filePath);
+                    UploadObject uploadObject = new UploadObject(filePath);
 
-                    try {
-                        uploadObject.upload();
-                        ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
-                        LOG.info("File uploaded successfully................");
-                        isFileExist = true;
-
-                    } catch (Exception e) {
-                        LOG.info("File upload failed.");
-                        e.printStackTrace();
-                    }
-
-                } else {
-                    //判断当前bucket是否开启了版本控制，根据版本控制状态决定是否允许上传同名文件
-                    Map<String,byte[]> map = null;
-                    try {
-                        map = BucketHandler.getBucketByName(bucketName);
-                    } catch (ServiceException e) {
-                        e.printStackTrace();
-                    }
-                    byte[] bucketMeta = map.get(bucketName);
-                    Map<String,String> bucketHeader = new HashMap<>();
-                    bucketHeader = SerializationUtil.deserializeMap(bucketMeta);
-                    String version_status = bucketHeader.get("version_status");
-
-                    if("Off".equals(version_status) || "OFF".equals(version_status) || version_status==null || "".equals(version_status)) {
-                        LOG.error("The file already exists on the chain or has a duplicate file name");
-                        throw new InternalErrorException(objectKey, callContext.getRequestId());
-                    } else if("Suspended ".equals(version_status) || "SUSPENDED".equals(version_status)) {
-                        LOG.error("Currently bucket versioning has been suspended");
-                        throw new InternalErrorException(objectKey, callContext.getRequestId());
-                    } else if("Enabled".equals(version_status) || "ENABLED".equals(version_status)) {
-                        //同名文件生成历史版本
+                    if(isFileExist == false && contentLength == 0) {
                         try {
-                            if(contentLength == 0) {
-                                ObjectHandler.createObject(bucketName, objectKey, new ObjectId(defaultVNU), metaByte);
-                            } else {
-                                uploadObject.upload();
-                                ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
-                            }
+                            ObjectId VNU = new ObjectId(defaultVNU);
+                            ObjectHandler.createObject(bucketName, objectKey, VNU, metaByte);
 
                         } catch (ServiceException e) {
-                            LOG.info("File upload failed.");
+                            LOG.info("File upload failed.111",e);
                             e.printStackTrace();
+                        }
+                    }else if (isFileExist == false && contentLength > 0) {
+
+                        try {
+                            uploadObject.upload();
+                            ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
+                            LOG.info("File uploaded successfully................");
+                            isFileExist = true;
+
+                        } catch (Exception e) {
+                            LOG.info("File upload failed.222",e);
+                            e.printStackTrace();
+                        }
+
+                    } else {
+                        //判断当前bucket是否开启了版本控制，根据版本控制状态决定是否允许上传同名文件
+                        Map<String,byte[]> map = null;
+                        try {
+                            map = BucketHandler.getBucketByName(bucketName);
+                        } catch (ServiceException e) {
+                            e.printStackTrace();
+                        }
+                        byte[] bucketMeta = map.get(bucketName);
+                        Map<String,String> bucketHeader = new HashMap<>();
+                        bucketHeader = SerializationUtil.deserializeMap(bucketMeta);
+                        String version_status = bucketHeader.get("version_status");
+
+                        if("Off".equals(version_status) || "OFF".equals(version_status) || version_status==null || "".equals(version_status)) {
+                            LOG.error("The file already exists on the chain or has a duplicate file name");
+                            throw new InternalErrorException(objectKey, callContext.getRequestId());
+                        } else if("Suspended ".equals(version_status) || "SUSPENDED".equals(version_status)) {
+                            LOG.error("Currently bucket versioning has been suspended");
+                            throw new InternalErrorException(objectKey, callContext.getRequestId());
+                        } else if("Enabled".equals(version_status) || "ENABLED".equals(version_status)) {
+                            //同名文件生成历史版本
+                            try {
+                                if(contentLength == 0) {
+                                    ObjectHandler.createObject(bucketName, objectKey, new ObjectId(defaultVNU), metaByte);
+                                } else {
+                                    uploadObject.upload();
+                                    ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
+                                }
+
+                            } catch (ServiceException e) {
+                                LOG.info("File upload failed.333",e);
+                                e.printStackTrace();
+                            }
                         }
                     }
                 }
-            }
 
-        } catch (IOException | NoSuchAlgorithmException | JAXBException e) {
-            LOG.error("internal error", e);
-            e.printStackTrace();
-        } catch (InterruptedException e) {
-            LOG.error("interrupted thread", e);
-            e.printStackTrace();
-        } finally {
-            try {
-                unlock(metaBucket, tempFileName, callContext);
-                //删除缓存文件
-                LOG.info("Delete ******* CACHE FILE...........");
-
-                Files.delete(obj);
-                Files.deleteIfExists(meta);
-            } catch (IOException e) {
+            } catch (IOException | NoSuchAlgorithmException | JAXBException e) {
+                LOG.error("internal error", e);
                 e.printStackTrace();
-            }
+            } catch (InterruptedException e) {
+                LOG.error("interrupted thread", e);
+                e.printStackTrace();
+            } finally {
+                try {
+                    unlock(metaBucket, tempFileName, callContext);
+                    //删除缓存文件
+                    LOG.info("Delete ******* CACHE FILE...........");
 
+                    Files.delete(obj);
+                    Files.deleteIfExists(meta);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+            }
         }
     }
 
@@ -670,7 +724,7 @@ public class RepositoryImpl implements S3Repository {
 
                 Files.deleteIfExists(meta);
             } catch (Exception e) {
-                LOG.info("File upload failed.");
+                LOG.info("File upload failed.444",e);
                 e.printStackTrace();
             }
         }catch (Exception e) {
