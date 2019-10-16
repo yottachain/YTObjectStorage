@@ -24,7 +24,6 @@ public class SYNCSender extends Thread{
     private final ArrayBlockingQueue<UploadFileReq> queue;
 
     private final int count;
-//    private static SYNCSender[] senders;
 
     public SYNCSender(int ss,ArrayBlockingQueue<UploadFileReq> queue) {
 
@@ -51,9 +50,12 @@ public class SYNCSender extends Thread{
 
     }
 
-    public void putMessage(UploadFileReq req) {
+    public static void putMessage(ArrayBlockingQueue queue,UploadFileReq req) {
+
         try {
-            queue.put(req);
+            boolean bool = queue.offer(req);
+
+            LOG.info("BOOL===="+bool);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -72,6 +74,7 @@ public class SYNCSender extends Thread{
                 break;
             }
             LOG.info("path"+req.getFilePath());
+
             String filePath = req.getFilePath();
             File file = new File(filePath);
             Map<String, String> header = new HashMap<>();

@@ -13,9 +13,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
 
 @Configuration
 @Component
@@ -28,19 +26,16 @@ public class SyncFileTask implements ApplicationRunner {
     @Value("${s3server.SYNC_BUCKET}")
     String syncBucketName;
 
-    private String jobName = "syncFileJob";
-
-
     @Override
     public void run(ApplicationArguments args) throws Exception {
         LOG.info("【系统启动】初始化异步文件上传任务...");
         LOG.info("SYNC_DIR===="+SYNC_DIR);
+        int count = SyncUploadSenderPool.newInstance().syncCount;
         Path syncDir = Paths.get(SYNC_DIR+"/"+syncBucketName);
         if (!Files.exists(syncDir)) {
             Files.createDirectories(syncDir);
         }
         String[] objectList = new File(SYNC_DIR+"/"+syncBucketName).list();
-
 
         LOG.info("File count::::"+objectList.length);
         if(objectList.length > 0) {
@@ -50,35 +45,14 @@ public class SyncFileTask implements ApplicationRunner {
                 req.setFilePath(filePath);
                 LOG.info("File path is ::::"+filePath);
 
-                SyncUploadSenderPool.startSender(i,req);
-//
-//                File file = new File(filePath);
-//
-//                Map<String, String> header = new HashMap<>();
-//                header.put("contentLength",file.length()+"");
-//                header.put("x-amz-date",(new Date()).getTime()+"");
-//                byte[] bs = SerializationUtil.serializeMap(header);
-//
-//                UploadObject uploadObject = new UploadObject(file.getPath());
-//                uploadObject.upload();
-//                ObjectHandler.createObject(syncBucketName, file.getName(), uploadObject.getVNU(), bs);
-//
-//                LOG.info(objectList[i]+" uploaded successfully................");
-//                //删除缓存文件
-//                LOG.info("Delete ******* CACHE FILE...........");
-//                Path obj = Paths.get(filePath);
-//                Files.delete(obj);
+                //在队列长度允许的情况下，可以往队列加  队列长度可配置 这里的50就表示当前队列的长度
+                if(i < 50) {
+                    SyncUploadSenderPool.startSender(req);
+                }
             }
         }
-//        LOG.info("【系统启动】初始化异步文件上传任务over");
     }
 
 
-//    private byte[] writeMetaFile(String filePath) {
-//        File file = new File(filePath);
-//        long contentLength = file.length();
-//        Map<String,String> header = new HashMap<>();
-//
-//    }
 
 }

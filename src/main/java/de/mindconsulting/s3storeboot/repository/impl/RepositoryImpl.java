@@ -381,7 +381,8 @@ public class RepositoryImpl implements S3Repository {
                 }
             }
             String[] objectList = new File(syncPath.toString()).list();
-            if(objectList.length <= sync_count) {
+
+            if(objectList.length < 50) {
 
                 Path filePath = Paths.get(syncDir+"/"+syncBucketName+"/"+objectKey);
                 try (InputStream in = callContext.getContent()) {
@@ -399,16 +400,12 @@ public class RepositoryImpl implements S3Repository {
                     out.close();
                     UploadFileReq req = new UploadFileReq();
                     req.setFilePath(filePath.toString());
-                    SyncUploadSenderPool.startSender(objectList.length,req);
+                    SyncUploadSenderPool.startSender(req);
                 }catch (Exception e) {
                     e.printStackTrace();
                 }
-
-//                SyncUploadSenderPool pool = new SyncUploadSenderPool();
-//                SyncUploadSenderPool.pu();
-
-
-
+            } else {
+                LOG.info("ERR:: no free threads to allocate,Wait Wait Wait...");
             }
 
 

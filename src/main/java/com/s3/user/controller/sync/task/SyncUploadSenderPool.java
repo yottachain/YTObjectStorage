@@ -11,7 +11,7 @@ public class SyncUploadSenderPool {
     String syncBucketName;
     int syncCount;
     private static SYNCSender[] senders;
-    private ArrayBlockingQueue<UploadFileReq> queue;
+    private static ArrayBlockingQueue<UploadFileReq> queue;
     private static SyncUploadSenderPool instance=null;
     public static SyncUploadSenderPool newInstance(){
         return instance;
@@ -31,7 +31,8 @@ public class SyncUploadSenderPool {
 
 
     public final void start() {
-        queue = new ArrayBlockingQueue(syncCount);
+        //程序稳定后 队列长度可配置
+        queue = new ArrayBlockingQueue(50);
         int count = syncCount;
         senders = new SYNCSender[count];
         for (int i=0;i<count;i++) {
@@ -47,8 +48,9 @@ public class SyncUploadSenderPool {
         });
     }
 
-    public static void startSender(int count, UploadFileReq req) {
-        senders[count].putMessage(req);
-        senders[count].run();
+    public static void startSender(UploadFileReq req) {
+
+        SYNCSender.putMessage(queue,req);
+
     }
 }
