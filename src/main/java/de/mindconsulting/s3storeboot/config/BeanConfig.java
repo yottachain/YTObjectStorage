@@ -69,7 +69,7 @@ public class BeanConfig {
     String zipkinServer;
 
     @Value("${s3server.SYNC}")
-    int status_sync;
+    String status_sync;
     @Value("${s3server.SYNC_DIR}")
     String SYNC_DIR;
     @Value("${s3server.SYNC_BUCKET}")

@@ -13,7 +13,6 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.ArrayBlockingQueue;
 
 @Configuration
 @Component
@@ -30,7 +29,6 @@ public class SyncFileTask implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         LOG.info("【系统启动】初始化异步文件上传任务...");
         LOG.info("SYNC_DIR===="+SYNC_DIR);
-        int count = SyncUploadSenderPool.newInstance().syncCount;
         Path syncDir = Paths.get(SYNC_DIR+"/"+syncBucketName);
         if (!Files.exists(syncDir)) {
             Files.createDirectories(syncDir);
@@ -52,7 +50,4 @@ public class SyncFileTask implements ApplicationRunner {
             }
         }
     }
-
-
-
 }

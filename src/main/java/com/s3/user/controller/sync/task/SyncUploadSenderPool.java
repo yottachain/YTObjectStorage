@@ -1,5 +1,6 @@
 package com.s3.user.controller.sync.task;
 import com.ytfs.service.packet.s3.UploadFileReq;
+import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -7,6 +8,9 @@ import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 
 public class SyncUploadSenderPool {
+
+    private static final Logger LOG = Logger.getLogger(SyncUploadSenderPool.class);
+
     String SYNC_DIR;
     String syncBucketName;
     int syncCount;
@@ -49,8 +53,6 @@ public class SyncUploadSenderPool {
     }
 
     public static void startSender(UploadFileReq req) {
-
         SYNCSender.putMessage(queue,req);
-
     }
 }

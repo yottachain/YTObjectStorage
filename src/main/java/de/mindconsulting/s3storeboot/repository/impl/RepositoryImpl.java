@@ -60,13 +60,13 @@ public class RepositoryImpl implements S3Repository {
     public final String accessKey;
     private final int allowMaxSize;
     private final String defaultVNU = "000000000000000000000000";
-    private final int status_sync;
+    private final String status_sync;
     private final String syncDir;
     private final String syncBucketName;
     private final int sync_count;
 
 
-    public RepositoryImpl(String repoBaseUrl,String accessKey,int allowMaxSize,int status_sync,String syncDir,String syncBucketName,int sync_count) {
+    public RepositoryImpl(String repoBaseUrl,String accessKey,int allowMaxSize,String status_sync,String syncDir,String syncBucketName,int sync_count) {
         this.repoBaseUrl = repoBaseUrl;
         this.accessKey = accessKey;
         this.allowMaxSize = allowMaxSize;
@@ -370,7 +370,7 @@ public class RepositoryImpl implements S3Repository {
     @Override
     public void createObject(S3CallContext callContext, String bucketName, String objectKey) {
 
-        if (status_sync == 1) {
+        if ("on".equals(status_sync)) {
 
             Path syncPath = Paths.get(syncDir+"/"+syncBucketName);
             if (!Files.exists(syncPath)) {
@@ -407,8 +407,6 @@ public class RepositoryImpl implements S3Repository {
             } else {
                 LOG.info("ERR:: no free threads to allocate,Wait Wait Wait...");
             }
-
-
         }else {
             //1、判断链上是否存在此bucket
             boolean isBucketExist = this.checkBucketExist(bucketName);

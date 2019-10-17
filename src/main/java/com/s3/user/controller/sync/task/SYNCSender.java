@@ -101,5 +101,22 @@ public class SYNCSender extends Thread{
             }
         }
 
+        //当线程队列等待长度为0，但是缓存目录下依然有文件需要 将文件继续put进队列
+//        String SYNC_DIR = SyncUploadSenderPool.newInstance().SYNC_DIR;
+//        String syncBucketName = SyncUploadSenderPool.newInstance().syncBucketName;
+//        String[] objectList = new File(SYNC_DIR+"/"+syncBucketName).list();
+//        Path syncDir = Paths.get(SYNC_DIR+"/"+syncBucketName);
+//        if(queue.remainingCapacity() == queue.size() && objectList.length>0) {
+//            for(int i=0;i<objectList.length;i++) {
+//                String filePath =syncDir.toString() +"/"+ objectList[i];
+//                UploadFileReq req1 = new UploadFileReq();
+//                req1.setFilePath(filePath);
+//                //在队列长度允许的情况下，可以往队列加  队列长度可配置 这里的50就表示当前队列的长度
+//                if(i < 50) {
+//                    SyncUploadSenderPool.startSender(req1);
+//                }
+//            }
+//        }
+
     }
 }
