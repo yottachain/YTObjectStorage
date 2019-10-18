@@ -2,46 +2,35 @@ package com.s3.user.controller.sync.task;
 
 import com.ytfs.client.UploadObject;
 import com.ytfs.client.s3.ObjectHandler;
-import com.ytfs.common.SerializationUtil;
-import com.ytfs.common.ServiceException;
-import com.ytfs.service.packet.s3.UploadFileReq;
 import org.apache.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class SYNCSender extends Thread{
+public class SYNCSender extends Thread {
 
     private static final Logger LOG = Logger.getLogger(SYNCSender.class);
+    private final ArrayBlockingQueue<AyncFileMeta> queue;
 
-    private final ArrayBlockingQueue<UploadFileReq> queue;
+    private final int threadId;
 
-    private final int count;
-
-    public SYNCSender(int ss,ArrayBlockingQueue<UploadFileReq> queue) {
-
+    public SYNCSender(int ss, ArrayBlockingQueue<AyncFileMeta> queue) {
         this.queue = queue;
-        this.count = ss;
+        this.threadId = ss;
     }
 
-    public static SYNCSender startSender(int ii,ArrayBlockingQueue<UploadFileReq> queue) {
-
-        SYNCSender sender = new SYNCSender(ii,queue);
-
+    public static SYNCSender startSender(int ii, ArrayBlockingQueue<AyncFileMeta> queue) {
+        SYNCSender sender = new SYNCSender(ii, queue);
         sender.start();
         return sender;
     }
 
     public void stopSend() {
         this.interrupt();
-
         try {
             this.join(15000);
         } catch (InterruptedException e) {
@@ -50,47 +39,36 @@ public class SYNCSender extends Thread{
 
     }
 
-    public static void putMessage(ArrayBlockingQueue queue,UploadFileReq req) {
-
-        try {
-            boolean bool = queue.offer(req);
-
-            LOG.info("BOOL===="+bool);
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
 
     @Override
     public void run() {
-        UploadFileReq req;
-        String bucketName = SyncUploadSenderPool.newInstance().syncBucketName;
-
+        AyncFileMeta req = null;
         while (!this.isInterrupted()) {
             try {
-                req = queue.take();
-            }catch (InterruptedException e) {
+                if (req == null) {
+                    req = queue.take();
+                }
+            } catch (InterruptedException e) {
                 break;
             }
-            LOG.info("path"+req.getFilePath());
-
-            String filePath = req.getFilePath();
+            LOG.info("path" + req.getPath());
+            String filePath = req.getPath();
             File file = new File(filePath);
-            Map<String, String> header = new HashMap<>();
-            header.put("contentLength",file.length()+"");
-            header.put("x-amz-date",(new Date()).getTime()+"");
-            byte[] bs = SerializationUtil.serializeMap(header);
-
+            byte[] bs = req.getMeta();
             UploadObject uploadObject = null;
             try {
+               
+                //file.getPath()//不存在，认为成功
+                        
+                        
                 uploadObject = new UploadObject(file.getPath());
                 uploadObject.upload();
-                ObjectHandler.createObject(bucketName, file.getName(), uploadObject.getVNU(), bs);
-            } catch (IOException | InterruptedException | ServiceException e) {
-                e.printStackTrace();
+                ObjectHandler.createObject(req.getBucketname(), req.getKey(), uploadObject.getVNU(), bs);
+                req = null;
+            } catch (Throwable e) {
+                LOG.error("", e);
             }
-            LOG.info(file.getName() +" uploaded successfully................");
+            LOG.info(file.getName() + " uploaded successfully................");
             //删除缓存文件
             LOG.info("Delete ******* CACHE FILE...........");
             Path obj = Paths.get(filePath);
@@ -117,6 +95,5 @@ public class SYNCSender extends Thread{
 //                }
 //            }
 //        }
-
     }
 }

@@ -2,6 +2,7 @@ package de.mindconsulting.s3storeboot.repository.impl;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.BaseEncoding;
+import com.s3.user.controller.sync.task.AyncFileMeta;
 import com.s3.user.controller.sync.task.SyncUploadSenderPool;
 import com.ytfs.client.DownloadObject;
 import com.ytfs.client.UploadObject;
@@ -398,9 +399,11 @@ public class RepositoryImpl implements S3Repository {
                         throw new InvalidDigestException(objectKey, callContext.getRequestId());
                     }
                     out.close();
-                    UploadFileReq req = new UploadFileReq();
-                    req.setFilePath(filePath.toString());
-                    SyncUploadSenderPool.startSender(req);
+                    AyncFileMeta ss;
+                    
+                    //UploadFileReq req = new UploadFileReq();
+                    //req.setFilePath(filePath.toString());
+                    SyncUploadSenderPool.putAyncFileMeta(ss);
                 }catch (Exception e) {
                     e.printStackTrace();
                 }
