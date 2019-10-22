@@ -3,14 +3,13 @@ package de.mindconsulting.s3storeboot.repository.impl;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.BaseEncoding;
 import com.s3.user.controller.sync.task.AyncFileMeta;
-import com.s3.user.controller.sync.task.SyncUploadSenderPool;
+import com.s3.user.controller.sync.task.AyncUploadSenderPool;
 import com.ytfs.client.DownloadObject;
 import com.ytfs.client.UploadObject;
 import com.ytfs.client.s3.BucketHandler;
 import com.ytfs.client.s3.ObjectHandler;
 import com.ytfs.common.SerializationUtil;
 import com.ytfs.common.ServiceException;
-import com.ytfs.service.packet.s3.UploadFileReq;
 import com.ytfs.service.packet.s3.entities.FileMetaMsg;
 import de.mc.ladon.s3server.common.*;
 import de.mc.ladon.s3server.entities.api.*;
@@ -62,21 +61,19 @@ public class RepositoryImpl implements S3Repository {
     private final int allowMaxSize;
     private final String defaultVNU = "000000000000000000000000";
     private final String status_sync;
-    private final String syncDir;
     private final String syncBucketName;
     private final int sync_count;
 
 
-    public RepositoryImpl(String repoBaseUrl,String accessKey,int allowMaxSize,String status_sync,String syncDir,String syncBucketName,int sync_count) {
+    public RepositoryImpl(String repoBaseUrl,String accessKey,int allowMaxSize,String status_sync,String syncBucketName,int sync_count) {
         this.repoBaseUrl = repoBaseUrl;
         this.accessKey = accessKey;
         this.allowMaxSize = allowMaxSize;
         this.status_sync = status_sync;
-        this.syncDir =syncDir;
         this.syncBucketName = syncBucketName;
         this.sync_count=sync_count;
         try {
-            jaxbContext = JAXBContext.newInstance(StorageMeta.class, UserData.class);
+            jaxbContext = JAXBContext.newInstance(StorageMeta.class, UserData.class,AyncFileMeta.class);
             userMap = new ConcurrentHashMap<>(loadUserFile());
         } catch (JAXBException e) {
             throw new RuntimeException(e);
@@ -372,44 +369,7 @@ public class RepositoryImpl implements S3Repository {
     public void createObject(S3CallContext callContext, String bucketName, String objectKey) {
 
         if ("on".equals(status_sync)) {
-
-            Path syncPath = Paths.get(syncDir+"/"+syncBucketName);
-            if (!Files.exists(syncPath)) {
-                try {
-                    Files.createDirectories(syncPath);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            String[] objectList = new File(syncPath.toString()).list();
-
-            if(objectList.length < 50) {
-
-                Path filePath = Paths.get(syncDir+"/"+syncBucketName+"/"+objectKey);
-                try (InputStream in = callContext.getContent()) {
-                    DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
-                    OutputStream out = Files.newOutputStream(filePath);
-                    long bytesCopied = StreamUtils.copy(din, out);
-                    byte[] md5bytes = din.getMessageDigest().digest();
-                    String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
-                    String md5 = callContext.getHeader().getContentMD5();
-                    if (callContext.getHeader().getContentLength() != null && callContext.getHeader().getContentLength() != bytesCopied
-                            || md5 != null && !md5.equals(storageMd5base64)) {
-                        Files.delete(filePath);
-                        throw new InvalidDigestException(objectKey, callContext.getRequestId());
-                    }
-                    out.close();
-                    AyncFileMeta ss;
-                    
-                    //UploadFileReq req = new UploadFileReq();
-                    //req.setFilePath(filePath.toString());
-                    SyncUploadSenderPool.putAyncFileMeta(ss);
-                }catch (Exception e) {
-                    e.printStackTrace();
-                }
-            } else {
-                LOG.info("ERR:: no free threads to allocate,Wait Wait Wait...");
-            }
+            this.ayncFileUpload(callContext,bucketName,objectKey);
         }else {
             //1、判断链上是否存在此bucket
             boolean isBucketExist = this.checkBucketExist(bucketName);
@@ -557,6 +517,122 @@ public class RepositoryImpl implements S3Repository {
         }
     }
 
+    public void ayncFileUpload(S3CallContext callContext, String bucketName, String objectKey) {
+        Path syncPath = Paths.get(repoBaseUrl+"/"+bucketName);
+        if (!Files.exists(syncPath)) {
+            try {
+                Files.createDirectories(syncPath);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        String tempFileName = UUID.randomUUID().toString();
+
+        Path filePath = Paths.get(repoBaseUrl+"/"+bucketName+"/"+tempFileName+".dat");
+        Path filePathXML = Paths.get(repoBaseUrl+"/"+bucketName+"/"+tempFileName+".xml");
+        try (InputStream in = callContext.getContent()) {
+            DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
+            OutputStream out = Files.newOutputStream(filePath);
+            long bytesCopied = ayncCopy(din, out);
+            byte[] md5bytes = din.getMessageDigest().digest();
+            String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
+            String md5 = callContext.getHeader().getContentMD5();
+            if (callContext.getHeader().getContentLength() != null && callContext.getHeader().getContentLength() != bytesCopied
+                    || md5 != null && !md5.equals(storageMd5base64)) {
+                Files.delete(filePath);
+                throw new InvalidDigestException(objectKey, callContext.getRequestId());
+            }
+            out.close();
+
+            AyncFileMeta fileMeta = new AyncFileMeta();
+            fileMeta.setKey(objectKey);
+            fileMeta.setPath(filePath.toString());
+            fileMeta.setBucketname(bucketName);
+
+            byte[] meta = getMeta(filePath.toString(),filePathXML.toString());
+            fileMeta.setMeta(meta);
+            writeAyncFileMeta(fileMeta,tempFileName,filePathXML);
+
+
+            AyncUploadSenderPool.putAyncFileMeta(fileMeta);
+        }catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static long ayncCopy(InputStream in, OutputStream out) throws IOException, InterruptedException {
+        long byteCount = 0L;
+        byte[] buffer = new byte[4096];
+
+        int bytesRead;
+        while((bytesRead = in.read(buffer)) != -1) {
+            out.write(buffer, 0, bytesRead);
+            byteCount += (long)bytesRead;
+            LOG.info("队列当前状态：：：：："+ AyncUploadSenderPool.isFull());
+            if(AyncUploadSenderPool.isFull()) {
+                Thread.sleep(100);
+            }
+
+        }
+
+        out.flush();
+        return byteCount;
+    }
+
+    //序列化属性 返回byte
+    public byte[] getMeta(String path,String xmlMeta) {
+
+        File file = new File(path);
+        Map<String, String> header = new HashMap<>();
+        header.put("contentLength",file.length()+"");
+        header.put("x-amz-date",(new Date()).getTime()+"");
+        //将完整的xml路径保存在meta中
+        header.put("xmlMeta",xmlMeta);
+        byte[] bs = SerializationUtil.serializeMap(header);
+//        header = SerializationUtil.deserializeMap(bs);
+
+        return bs;
+    }
+
+    //异步上传，写meta
+    public void writeAyncFileMeta(AyncFileMeta fileMeta,String tempFileName,Path filePathXML) {
+        Map<String, String> header = new HashMap<>();
+        header.put("objectKey",fileMeta.getKey());
+        header.put("uuidKey",tempFileName);
+        header.put("bucketName",fileMeta.getBucketname());
+        header.put("path",fileMeta.getPath());
+
+        try {
+            Files.createFile(filePathXML);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        try (OutputStream out = Files.newOutputStream(filePathXML)) {
+            Marshaller m = null;
+            m = jaxbContext.createMarshaller();
+            m.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
+            m.marshal(fileMeta, out);
+            out.close();
+        }catch (IOException | JAXBException e) {
+            LOG.info("err::",e);
+        }
+    }
+
+
+    //异步上传，读meta
+    public AyncFileMeta loadAyncFileMeta(Path meta) {
+        try (InputStream in = Files.newInputStream(meta)) {
+            AyncFileMeta metaData = (AyncFileMeta) jaxbContext.createUnmarshaller().unmarshal(in);
+            return metaData;
+        } catch (IOException | JAXBException e) {
+            logger.warn("error reading meta file at " + meta.toString(), e);
+        }
+        return null;
+    }
+
+
+
     @Override
     public InitiateMultipartUploadResult initiateMultipartUpload(S3CallContext callContext, String bucketName, String objectKey) {
 
@@ -659,8 +735,11 @@ public class RepositoryImpl implements S3Repository {
     public CompleteMultipartUploadResult completeMultipartUpload(S3CallContext callContext, String bucketName, String objectKey) {
         String uploadId = callContext.getParams().getAllParams().get("uploadId");
         List<Part> parts = MuLtipartUploadCache.getParts(uploadId);
-        String filePath = repoBaseUrl+ "/" + bucketName + "/" + "data/" +  UUID.randomUUID().toString();
+//        String filePath = repoBaseUrl+ "/" + bucketName + "/" + "data/" +  UUID.randomUUID().toString();
 
+        String tempFileName = UUID.randomUUID().toString();
+        String filePath = repoBaseUrl+ "/" + bucketName + "/" + tempFileName+".dat";
+        String filePathXML = repoBaseUrl+ "/" + bucketName + "/" + tempFileName+".xml";
         long size = 0l;
         String etag = null;
         OutputStream bos=null;
@@ -690,7 +769,7 @@ public class RepositoryImpl implements S3Repository {
             }
 
             // 如果文件不存在  将文件上传至超级节点
-            UploadObject uploadObject = new UploadObject(filePath);
+//            UploadObject uploadObject = new UploadObject(filePath);
             Path meta = Paths.get(filePath + META_XML_EXTENSION);
             Path obj = Paths.get(filePath);
             InputStream in = new FileInputStream(filePath);
@@ -710,21 +789,41 @@ public class RepositoryImpl implements S3Repository {
             map.put("contentLength",contentLength);
             map.put("content-length",contentLength);
             byte[] newHeaderByte = SerializationUtil.serializeMap(map);
-            try {
-                uploadObject.upload();
-                ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), newHeaderByte);
-                System.out.println("File uploaded successfully................");
+            //准备在此加异步上传。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。
+            if("on".equals(status_sync)) {
+                byte[] aync_meta = getMeta(filePath,filePathXML);
+                AyncFileMeta fileMeta = new AyncFileMeta();
+                fileMeta.setKey(objectKey);
+                fileMeta.setBucketname(bucketName);
+                fileMeta.setMeta(aync_meta);
+                fileMeta.setPath(filePath);
 
-                //删除缓存文件
-                LOG.info("Delete ******* CACHE FILE...........");
-                in.close();
-                din.close();
+                //将文件信息写入到本地xml中
+                writeAyncFileMeta(fileMeta,tempFileName,Paths.get(filePathXML));
 
-                Files.deleteIfExists(meta);
-            } catch (Exception e) {
-                LOG.info("File upload failed.444",e);
-                e.printStackTrace();
+                //将上传请求加入到队列
+                AyncUploadSenderPool.putAyncFileMeta(fileMeta);
+
+
+            }else {
+                try {
+                    UploadObject uploadObject = new UploadObject(filePath);
+                    uploadObject.upload();
+                    ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), newHeaderByte);
+                    System.out.println("File uploaded successfully................");
+
+                    //删除缓存文件
+                    LOG.info("Delete ******* CACHE FILE...........");
+                    in.close();
+                    din.close();
+
+                    Files.deleteIfExists(meta);
+                } catch (Exception e) {
+                    LOG.info("File upload failed.444",e);
+                    e.printStackTrace();
+                }
             }
+
         }catch (Exception e) {
             e.printStackTrace();
         }finally {

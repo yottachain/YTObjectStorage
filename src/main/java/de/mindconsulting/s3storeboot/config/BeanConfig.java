@@ -1,6 +1,6 @@
 package de.mindconsulting.s3storeboot.config;
 
-import com.s3.user.controller.sync.task.SyncUploadSenderPool;
+import com.s3.user.controller.sync.task.AyncUploadSenderPool;
 import com.ytfs.client.ClientInitor;
 import com.ytfs.client.Configurator;
 import de.mc.ladon.s3server.logging.LoggingRepository;
@@ -70,24 +70,23 @@ public class BeanConfig {
 
     @Value("${s3server.SYNC}")
     String status_sync;
-    @Value("${s3server.SYNC_DIR}")
-    String SYNC_DIR;
     @Value("${s3server.SYNC_BUCKET}")
     String syncBucketName;
-    @Value("${s3server.SYNC_COUNT}")
-    int count;
+    @Value("${s3server.queueSize}")
+    int queueSize;
+    @Value("${s3server.syncCount}")
+    int syncCount;
 
     @ConditionalOnMissingBean
     @Bean
     S3Repository s3Repository() {
-
-        SyncUploadSenderPool.init(SYNC_DIR,syncBucketName,count);
-        return new RepositoryImpl(fsRepoRoot,accessKey,allowMaxSize,status_sync,SYNC_DIR,syncBucketName,count);
+        return new RepositoryImpl(fsRepoRoot,accessKey,allowMaxSize,status_sync,syncBucketName,syncCount);
     }
 
     @Bean
     ServletRegistrationBean s3Registration(S3ServletConfiguration config, S3Repository repository) throws IOException {
         init();
+        AyncUploadSenderPool.init(fsRepoRoot,queueSize,syncCount);
         ServletRegistrationBean bean = new ServletRegistrationBean();
         bean.setName("s3servlet");
         bean.setAsyncSupported(true);

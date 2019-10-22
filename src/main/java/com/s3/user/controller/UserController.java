@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 @RestController
@@ -25,8 +24,8 @@ public class UserController {
 
     private static final Logger LOG = Logger.getLogger(UserController.class);
 
-    @Value("${s3server.SYNC_DIR}")
-    String SYNC_DIR;
+    @Value("${s3server.fsrepo.root}")
+    String fsRepoRoot;
     @Value("${s3server.SYNC_BUCKET}")
     String syncBucketName;
 
@@ -54,52 +53,60 @@ public class UserController {
         return getPrivateKey;
     }
 
-    @RequestMapping(value = "/sync",method = RequestMethod.GET)
+    @RequestMapping(value = "/aync",method = RequestMethod.GET)
     @ResponseBody
-    public String getUnFinished() {
+    public String getAyncUploadStatus() {
 
-
-        String[] objectList = new File(SYNC_DIR+"/"+syncBucketName).list();
+        String[] objectList = new File(fsRepoRoot+"/"+syncBucketName).list();
 
         String status = this.syncStatus(objectList);
         return status;
     }
-
     public String syncStatus(String[] objectList) {
-        try {
-            Thread.currentThread().sleep(50000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        String[] tmpFileNameList = objectList;
-        List<String> ls = Arrays.asList(tmpFileNameList);
-        List tmpList = new ArrayList(ls);
-        if(tmpFileNameList.length == 0) {
-            LOG.info("success");
-        }
 
-        if(objectList.length >0) {
-            for(int i=0;i<objectList.length;i++) {
-                Path filePath = Paths.get(SYNC_DIR+"/"+syncBucketName+"/"+objectList[i]);
-                if(!Files.exists(filePath)) {
-                    tmpList.remove(objectList[i]);
+        //初始化一个list,用来存放所有的xml完整路径
+        List<String> list = new ArrayList<>();
+
+        if(objectList.length > 0) {
+            for (int i=0;i<objectList.length;i++) {
+                File file = new File(fsRepoRoot+"/"+objectList[i]);
+                //查询当前bucket下所有的xml文件   xml文件是用来存放文件信息的，一个完整文件对应一个xml文件
+                String[] nameList = file.list(((dir, name) -> name.endsWith(".xml") || new File(name).isDirectory()));
+                if(nameList.length>0) {
+                    for(int ii=0;ii<nameList.length;ii++) {
+                        String filePathXml = file.getPath()+"/"+nameList[ii];
+                        list.add(filePathXml);
+                    }
                 }
             }
-            tmpFileNameList = new String[tmpList.size()];
-            tmpList.toArray(tmpFileNameList);
-            System.out.println("ssssss======="+tmpFileNameList.length);
 
-
-
-            if(tmpFileNameList.length>0) {
-                return this.syncStatus(tmpFileNameList);
-            } else {
-                return "SUCCESS";
-            }
-
-        } else {
+        }
+        if(list.size() == 0) {
             return "SUCCESS";
+        } else {
+            return ayncInfo(list);
         }
     }
 
+    public String ayncInfo(List<String> list) {
+        if(list.size() == 0) {
+            return "SUCCESS";
+        } else {
+            for(int i=0;i<list.size();i++) {
+                Path xmlPath = Paths.get(list.get(i));
+                if(!Files.exists(xmlPath)) {
+                    list.remove(xmlPath);
+                }
+            }
+            if(list.size() > 0) {
+                try {
+                    Thread.currentThread().sleep(50000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                ayncInfo(list);
+            }
+            return "SUCCESS";
+        }
+    }
 }

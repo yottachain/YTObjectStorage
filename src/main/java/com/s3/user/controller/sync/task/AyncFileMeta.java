@@ -1,10 +1,11 @@
 package com.s3.user.controller.sync.task;
 
 import com.ytfs.common.SerializationUtil;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
 
+import javax.xml.bind.annotation.XmlElement;
+import javax.xml.bind.annotation.XmlRootElement;
+
+@XmlRootElement(name = "AyncFileMeta")
 public class AyncFileMeta {
 
     private String key;
@@ -15,6 +16,7 @@ public class AyncFileMeta {
     /**
      * @return the key
      */
+    @XmlElement(name = "key")
     public String getKey() {
         return key;
     }
@@ -29,6 +31,7 @@ public class AyncFileMeta {
     /**
      * @return the bucketname
      */
+    @XmlElement(name = "bucketname")
     public String getBucketname() {
         return bucketname;
     }
@@ -43,6 +46,7 @@ public class AyncFileMeta {
     /**
      * @return the meta
      */
+    @XmlElement(name = "meta")
     public byte[] getMeta() {
         return meta;
     }
@@ -54,27 +58,32 @@ public class AyncFileMeta {
         this.meta = meta;
     }
 
-    public void save() throws IOException {
-        byte[] bs = SerializationUtil.serializeNoID(this);
-        String fileName = path + ".met";
-
-        OutputStream os = new FileOutputStream(fileName);
-        os.write(bs);
-        os.close();
-
-    }
+//    public void save() throws IOException {
+//        byte[] bs = SerializationUtil.serializeNoID(this);
+//        String fileName = path + ".met";
+//
+//        OutputStream os = new FileOutputStream(fileName);
+//        os.write(bs);
+//        os.close();
+//
+//    }
 
     public static AyncFileMeta load(String path)   {
 //********************ci
         byte[] bs = null;
-        AyncFileMeta ins = new AyncFileMeta();
-        SerializationUtil.deserializeNoID(bs, ins);
-        return ins;
+        AyncFileMeta file = new AyncFileMeta();
+        file.setBucketname("bucket-test-01");
+        file.setKey("testtt");
+        file.setPath("D:/s3cache/sync");
+        SerializationUtil.deserializeNoID(bs, file);
+        file.setMeta(bs);
+        return file;
     }
 
     /**
      * @return the path
      */
+    @XmlElement(name = "path")
     public String getPath() {
         return path;
     }
