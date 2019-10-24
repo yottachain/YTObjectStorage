@@ -20,9 +20,8 @@ import de.mc.ladon.s3server.repository.api.S3Repository;
 import de.mindconsulting.s3storeboot.jaxb.meta.StorageMeta;
 import de.mindconsulting.s3storeboot.jaxb.meta.UserData;
 import de.mindconsulting.s3storeboot.util.S3Lock;
+import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 
 import javax.xml.bind.JAXBContext;
@@ -46,11 +45,10 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 public class RepositoryImpl implements S3Repository {
-    private static final org.apache.log4j.Logger LOG = org.apache.log4j.Logger.getLogger(RepositoryImpl.class);
+    private static final Logger LOG = Logger.getLogger(RepositoryImpl.class);
     public static final String META_XML_EXTENSION = "_meta.xml";
     public static final String USER_FOLDER = "users";
     public static final String SYSTEM_DEFAULT_USER = "SYSTEM";
-    private Logger logger = LoggerFactory.getLogger(RepositoryImpl.class);
     private static final String DATA_FOLDER = "data";
     private static final String META_FOLDER = "meta";
     private final String repoBaseUrl;
@@ -93,7 +91,7 @@ public class RepositoryImpl implements S3Repository {
                 return userData.getUsers();
             }
         } catch (IOException | JAXBException e) {
-            logger.error("error reading user file ", e);
+            LOG.error("error reading user file ", e);
             throw new RuntimeException(e);
         }
 
@@ -120,8 +118,8 @@ public class RepositoryImpl implements S3Repository {
         try {
             String[] buckets = BucketHandler.listBucket();
             LOG.info("bucket count:::"+buckets.length);
-            for(int i=0;i<buckets.length;i++)  {
-                S3BucketImpl  s3Bucket = new S3BucketImpl(buckets[i],new Date(),callContext.getUser());
+            for (String bucket : buckets) {
+                S3BucketImpl s3Bucket = new S3BucketImpl(bucket, new Date(), callContext.getUser());
                 s3Buckets.add(s3Bucket);
             }
 
@@ -240,20 +238,20 @@ public class RepositoryImpl implements S3Repository {
                         fileMeta.isLatest(),
                         new Date(Long.valueOf(header.get("x-amz-date"))),
                         header.get("ETag"),
-                        Long.valueOf(header.get("content-length")),
+                        Long.valueOf(header.get("contentLength")),
                         "STANDARD"
                 );
                 versions.add(abstractVersionElement);
             }
 
             if(fileMetas.size() < maxKeys) {
+                LOG.info("");
                 marker = null;
                 nextVersionId = null;
             } else {
                 marker = fileMetas.get(fileMetas.size()-1).getFileName();
                 nextVersionId = fileMetas.get(fileMetas.size()-1).getVersionId().toString();
             }
-//            System.out.println("=================");
         } catch (ServiceException e) {
             e.printStackTrace();
         }
@@ -517,7 +515,7 @@ public class RepositoryImpl implements S3Repository {
         }
     }
 
-    public void ayncFileUpload(S3CallContext callContext, String bucketName, String objectKey) {
+    private void ayncFileUpload(S3CallContext callContext, String bucketName, String objectKey) {
         Path syncPath = Paths.get(repoBaseUrl+"/"+bucketName);
         if (!Files.exists(syncPath)) {
             try {
@@ -544,7 +542,7 @@ public class RepositoryImpl implements S3Repository {
                 throw new InvalidDigestException(objectKey, callContext.getRequestId());
             }
             out.close();
-
+            in.close();
             AyncFileMeta fileMeta = new AyncFileMeta();
             fileMeta.setKey(objectKey);
             fileMeta.setPath(filePath.toString());
@@ -561,7 +559,7 @@ public class RepositoryImpl implements S3Repository {
         }
     }
 
-    public static long ayncCopy(InputStream in, OutputStream out) throws IOException, InterruptedException {
+    private static long ayncCopy(InputStream in, OutputStream out) throws IOException, InterruptedException {
         long byteCount = 0L;
         byte[] buffer = new byte[4096];
 
@@ -569,7 +567,6 @@ public class RepositoryImpl implements S3Repository {
         while((bytesRead = in.read(buffer)) != -1) {
             out.write(buffer, 0, bytesRead);
             byteCount += (long)bytesRead;
-            LOG.info("队列当前状态：：：：："+ AyncUploadSenderPool.isFull());
             if(AyncUploadSenderPool.isFull()) {
                 Thread.sleep(100);
             }
@@ -581,7 +578,7 @@ public class RepositoryImpl implements S3Repository {
     }
 
     //序列化属性 返回byte
-    public byte[] getMeta(String path,String xmlMeta) {
+    private byte[] getMeta(String path, String xmlMeta) {
 
         File file = new File(path);
         Map<String, String> header = new HashMap<>();
@@ -589,14 +586,12 @@ public class RepositoryImpl implements S3Repository {
         header.put("x-amz-date",(new Date()).getTime()+"");
         //将完整的xml路径保存在meta中
         header.put("xmlMeta",xmlMeta);
-        byte[] bs = SerializationUtil.serializeMap(header);
-//        header = SerializationUtil.deserializeMap(bs);
 
-        return bs;
+        return SerializationUtil.serializeMap(header);
     }
 
     //异步上传，写meta
-    public void writeAyncFileMeta(AyncFileMeta fileMeta,String tempFileName,Path filePathXML) {
+    private void writeAyncFileMeta(AyncFileMeta fileMeta, String tempFileName, Path filePathXML) {
         Map<String, String> header = new HashMap<>();
         header.put("objectKey",fileMeta.getKey());
         header.put("uuidKey",tempFileName);
@@ -626,7 +621,7 @@ public class RepositoryImpl implements S3Repository {
             AyncFileMeta metaData = (AyncFileMeta) jaxbContext.createUnmarshaller().unmarshal(in);
             return metaData;
         } catch (IOException | JAXBException e) {
-            logger.warn("error reading meta file at " + meta.toString(), e);
+            LOG.warn("error reading meta file at " + meta.toString(), e);
         }
         return null;
     }
@@ -684,8 +679,8 @@ public class RepositoryImpl implements S3Repository {
 
             DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
             DigestInputStream dinSHA256 = new DigestInputStream(din, MessageDigest.getInstance("SHA-256"));
-            byte[] md5bytes = null;
-            byte[] sha256bytes = null;
+            byte[] md5bytes;
+            byte[] sha256bytes;
             try (OutputStream out = Files.newOutputStream(obj)) {
                 long bytesCopied = 0;
                 try {
@@ -711,7 +706,7 @@ public class RepositoryImpl implements S3Repository {
                 Date date = new Date(Files.getLastModifiedTime(obj).toMillis());
                 header.setEtag(etag);
                 header.setDate(date);
-                header.setContentLength(0l);
+                header.setContentLength(0L);
                 callContext.setResponseHeader(header);
                 Part part = new Part();
                 part.setEtag(etag);
@@ -852,7 +847,7 @@ public class RepositoryImpl implements S3Repository {
                 throw new OperationAbortedException(objectKey, callContext.getRequestId());
             }
         } catch (IOException e) {
-            logger.debug("resource not locked", e);
+            LOG.debug("resource not locked", e);
         }
     }
 
@@ -936,7 +931,7 @@ public class RepositoryImpl implements S3Repository {
         return result.toArray(new String[0]);
     }
 
-    public boolean checkBucketExist(String bucketName){
+    private boolean checkBucketExist(String bucketName){
         boolean flag = false;
         try {
             String[] buckets = BucketHandler.listBucket();
@@ -1017,10 +1012,10 @@ public class RepositoryImpl implements S3Repository {
             }
         } else {
             String newRange = range.replace("bytes=","");
-            logger.info("range======"+range);
+            LOG.info("range======"+range);
             long start = Long.parseLong(newRange.substring(0,newRange.indexOf("-")));
             long end = Long.parseLong(newRange.substring(newRange.indexOf("-")+1));
-            logger.info("start======"+start + "   /end======"+end);
+            LOG.info("start======"+start + "   /end======"+end);
             is = obj.load(start,end);
         }
         try {
@@ -1033,7 +1028,7 @@ public class RepositoryImpl implements S3Repository {
             if (!head)
                 callContext.setContent(is);
         } catch (Exception e) {
-            logger.error("internal error", e);
+            LOG.error("internal error", e);
             e.printStackTrace();
         }
     }
@@ -1136,6 +1131,7 @@ public class RepositoryImpl implements S3Repository {
                 marker = null;
                 nextVersionId = null;
             } else {
+
                 marker = fileMetaMsgs.get(fileMetaMsgs.size()-1).getFileName();
                 nextVersionId = fileMetaMsgs.get(fileMetaMsgs.size()-1).getVersionId().toString();
             }
@@ -1219,12 +1215,12 @@ public class RepositoryImpl implements S3Repository {
 
     @Override
     public S3User getUser(S3CallContext callContext, String accessKey) {
-        logger.info("getuser()    accessKey======="+accessKey);
+        LOG.info("getuser()    accessKey======="+accessKey);
         return loadUser(callContext,accessKey);
     }
 
     private S3User loadUser(S3CallContext callContext, String accessKey) {
-        logger.info("loadUser()    accessKey======="+accessKey);
+        LOG.info("loadUser()    accessKey======="+accessKey);
         S3User user = userMap.get(accessKey);
         if (user != null) return user;
         else {

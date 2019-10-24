@@ -4,6 +4,7 @@ import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -16,8 +17,20 @@ public class AyncUploadSenderPool {
     int queueSize;
     int syncCount;
     private AyncSender[] senders;
-    private ArrayBlockingQueue<AyncFileMeta> queue;
+    static ArrayBlockingQueue<AyncFileMeta> queue;
     private static AyncUploadSenderPool instance = null;
+    static List<SyncNotice> notices= Collections.synchronizedList(new ArrayList());
+
+    public static void addSyncNotice(SyncNotice n){
+        notices.add(n);
+    }
+
+    public static void notice(AyncFileMeta req){
+        List<SyncNotice> ls=new ArrayList(notices);
+        for(SyncNotice n:ls){
+            n.removeNotice(req);
+        }
+    }
 
     public static AyncUploadSenderPool newInstance() {
         return instance;
@@ -84,4 +97,7 @@ public class AyncUploadSenderPool {
 
         return newInstance().queue.remainingCapacity() == 0;
     }
+
+
+
 }

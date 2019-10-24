@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 
@@ -59,9 +58,9 @@ public class AyncSender extends Thread {
                 LOG.info("path:::" + req.getPath());
 
                 byte[] bs = req.getMeta();
-                UploadObject uploadObject = null;
+                UploadObject uploadObject;
 
-                Map<String,String> header = new HashMap<>();
+                Map<String,String> header;
 
                 header = SerializationUtil.deserializeMap(bs);
 
@@ -82,7 +81,7 @@ public class AyncSender extends Thread {
                 String xmlMeta = header.get("xmlMeta");
                 Path xml = Paths.get(xmlMeta);
                 try {
-
+                    AyncUploadSenderPool.notice(req);
                     Files.delete(xml);
                     Files.delete(obj);
                 } catch (IOException e) {

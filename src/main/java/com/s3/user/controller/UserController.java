@@ -1,5 +1,7 @@
 package com.s3.user.controller;
 
+import com.s3.user.controller.sync.task.AyncUploadSenderPool;
+import com.s3.user.controller.sync.task.SyncNotice;
 import com.ytfs.client.LocalInterface;
 import com.ytfs.common.ServiceException;
 import org.apache.log4j.Logger;
@@ -57,10 +59,17 @@ public class UserController {
     @ResponseBody
     public String getAyncUploadStatus() {
 
-        String[] objectList = new File(fsRepoRoot+"/"+syncBucketName).list();
+        LOG.info("");
+        SyncNotice sn=new SyncNotice();
+        AyncUploadSenderPool.addSyncNotice(sn);
 
-        String status = this.syncStatus(objectList);
-        return status;
+        sn.waitComplete();
+
+        return "SUCCESS";
+//        String[] objectList = new File(fsRepoRoot+"/"+syncBucketName).list();
+//
+//        String status = this.syncStatus(objectList);
+//        return status;
     }
     public String syncStatus(String[] objectList) {
 
