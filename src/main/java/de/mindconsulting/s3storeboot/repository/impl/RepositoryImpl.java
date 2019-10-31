@@ -970,7 +970,7 @@ public class RepositoryImpl implements S3Repository {
             isObjectExist = ObjectHandler.isExistObject(bucketName,objectKey,versionId);
             if(isObjectExist == false) {
 //                return;
-                throw new NoSuchKeyException(objectKey, callContext.getRequestId());
+//                throw new NoSuchKeyException(objectKey, callContext.getRequestId());
             }
         } catch (ServiceException e) {
             e.printStackTrace();

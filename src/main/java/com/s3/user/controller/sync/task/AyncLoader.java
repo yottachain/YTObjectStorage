@@ -33,7 +33,7 @@ public class AyncLoader extends Thread {
 
     @Override
     public void run() {
-        LOG.info("【系统启动】初始化异步文件上传任务...");
+        LOG.info("System start initiate asynchronous file upload task...");
         LOG.info("SYNC_DIR====" + SYNC_DIR);
         Path syncDir = Paths.get(SYNC_DIR);
 
