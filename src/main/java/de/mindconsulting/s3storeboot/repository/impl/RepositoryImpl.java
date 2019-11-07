@@ -599,7 +599,9 @@ public class RepositoryImpl implements S3Repository {
         header.put("path",fileMeta.getPath());
 
         try {
-            Files.createFile(filePathXML);
+            if(!Files.exists(filePathXML)) {
+                Files.createFile(filePathXML);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -765,7 +767,7 @@ public class RepositoryImpl implements S3Repository {
 
             // 如果文件不存在  将文件上传至超级节点
 //            UploadObject uploadObject = new UploadObject(filePath);
-            Path meta = Paths.get(filePath + META_XML_EXTENSION);
+            Path meta = Paths.get(filePathXML);
             Path obj = Paths.get(filePath);
             InputStream in = new FileInputStream(filePath);
             DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
@@ -821,12 +823,6 @@ public class RepositoryImpl implements S3Repository {
 
         }catch (Exception e) {
             e.printStackTrace();
-        }finally {
-            try {
-                Files.delete(Paths.get(filePath));
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
         CompleteMultipartUploadResult result = new CompleteMultipartUploadResult();
         String location = "http://"+ bucketName + ".s3.amazonaws.com/" + objectKey ;
@@ -997,16 +993,21 @@ public class RepositoryImpl implements S3Repository {
         try {
             obj = new DownloadObject(bucketName, objectKey,versionId);
         } catch (ServiceException e) {
-            e.printStackTrace();
+            if(obj != null) {
+                LOG.info("ERR:",e);
+            }
         }
         InputStream is= null;
         //如果range不为空，则表示范围下载 range格式 例：range: "bytes=0-2000"
         String range = callContext.getHeader().getRange();
-        LOG.info("File size = "+obj.getLength());
-        if(obj.getLength() < allowMaxSize) {
-            range = null;
+        if(obj != null) {
+            LOG.info("File size = "+obj.getLength());
+            if(obj.getLength() < allowMaxSize) {
+                range = null;
+            }
         }
-        if(range == null) {
+
+        if(range == null && obj != null) {
             if(head == false) {
                 is = obj.load();
             }

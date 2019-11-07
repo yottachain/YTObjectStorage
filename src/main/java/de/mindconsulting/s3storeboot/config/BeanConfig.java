@@ -132,5 +132,4 @@ public class BeanConfig {
         return filterBean;
     }
 
-
 }
