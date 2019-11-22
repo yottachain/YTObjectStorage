@@ -10,6 +10,8 @@ import com.ytfs.client.s3.BucketHandler;
 import com.ytfs.client.s3.ObjectHandler;
 import com.ytfs.common.SerializationUtil;
 import com.ytfs.common.ServiceException;
+import com.ytfs.common.codec.KeyStoreCoder;
+import com.ytfs.common.conf.UserConfig;
 import com.ytfs.service.packet.s3.entities.FileMetaMsg;
 import de.mc.ladon.s3server.common.*;
 import de.mc.ladon.s3server.entities.api.*;
@@ -19,6 +21,7 @@ import de.mc.ladon.s3server.jaxb.entities.*;
 import de.mc.ladon.s3server.repository.api.S3Repository;
 import de.mindconsulting.s3storeboot.jaxb.meta.StorageMeta;
 import de.mindconsulting.s3storeboot.jaxb.meta.UserData;
+import de.mindconsulting.s3storeboot.service.CosBackupService;
 import de.mindconsulting.s3storeboot.util.S3Lock;
 import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
@@ -391,24 +394,32 @@ public class RepositoryImpl implements S3Repository {
                 }
             }
             String tempFileName = UUID.randomUUID().toString();
+            String aesTmpObj = UUID.randomUUID().toString();
             Path meta = metaBucket.resolve(tempFileName + META_XML_EXTENSION);
             Path obj = dataBucket.resolve(tempFileName);
+            //加密文件用于备份
+            Path AESKyeObj = dataBucket.resolve(aesTmpObj);
+            LOG.info("AESKyeObj====="+AESKyeObj.toString());
             Long contentLength = callContext.getHeader().getContentLength();
             String md5 = callContext.getHeader().getContentMD5();
             lock(metaBucket, tempFileName, S3Lock.LockType.write, callContext);
             try (InputStream in = callContext.getContent()) {
                 Files.createDirectories(obj.getParent());
                 Files.createFile(obj);
+                Files.createFile(AESKyeObj);
 
                 DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
+
                 try (OutputStream out = Files.newOutputStream(obj)) {
-                    long bytesCopied = StreamUtils.copy(din, out);
+                    OutputStream aes = Files.newOutputStream(AESKyeObj);
+                    long bytesCopied = CosBackupService.copy(din,out,aes);
+                    aes.close();
+//                    long bytesCopied = StreamUtils.copy(callContext.getContent(), out);
                     byte[] md5bytes = din.getMessageDigest().digest();
-                    String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
+//                    String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
                     String storageMd5base16 = Encoding.toHex(md5bytes);
 
-                    if (contentLength != null && contentLength != bytesCopied
-                            || md5 != null && !md5.equals(storageMd5base64)) {
+                    if (contentLength != null && contentLength != bytesCopied ) {
                         Files.delete(obj);
                         Files.deleteIfExists(meta);
                         throw new InvalidDigestException(objectKey, callContext.getRequestId());
@@ -507,6 +518,10 @@ public class RepositoryImpl implements S3Repository {
 
                     Files.delete(obj);
                     Files.deleteIfExists(meta);
+                    //备份到腾讯云
+                    String etag = CosBackupService.uploadFile(AESKyeObj.toString(),bucketName,objectKey);
+                    LOG.info("etag coss====="+etag);
+                    Files.delete(AESKyeObj);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -526,13 +541,15 @@ public class RepositoryImpl implements S3Repository {
         }
 
         String tempFileName = UUID.randomUUID().toString();
-
+        String escFileName = UUID.randomUUID().toString();
         Path filePath = Paths.get(repoBaseUrl+"/"+bucketName+"/"+tempFileName+".dat");
         Path filePathXML = Paths.get(repoBaseUrl+"/"+bucketName+"/"+tempFileName+".xml");
+        Path aesFilePath = Paths.get(repoBaseUrl+"/"+bucketName+"/"+escFileName);
         try (InputStream in = callContext.getContent()) {
             DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
             OutputStream out = Files.newOutputStream(filePath);
-            long bytesCopied = ayncCopy(din, out);
+            OutputStream aes = Files.newOutputStream(aesFilePath);
+            long bytesCopied = ayncCopy(din, out,aes);
             byte[] md5bytes = din.getMessageDigest().digest();
             String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
             String md5 = callContext.getHeader().getContentMD5();
@@ -543,9 +560,11 @@ public class RepositoryImpl implements S3Repository {
             }
             out.close();
             in.close();
+            aes.close();
             AyncFileMeta fileMeta = new AyncFileMeta();
             fileMeta.setKey(objectKey);
             fileMeta.setPath(filePath.toString());
+            fileMeta.setAesPath(aesFilePath.toString());
             fileMeta.setBucketname(bucketName);
 
             byte[] meta = getMeta(filePath.toString(),filePathXML.toString());
@@ -559,21 +578,27 @@ public class RepositoryImpl implements S3Repository {
         }
     }
 
-    private static long ayncCopy(InputStream in, OutputStream out) throws IOException, InterruptedException {
+    private static long ayncCopy(InputStream in, OutputStream out,OutputStream aes) throws IOException, InterruptedException {
         long byteCount = 0L;
         byte[] buffer = new byte[4096];
 
         int bytesRead;
         while((bytesRead = in.read(buffer)) != -1) {
             out.write(buffer, 0, bytesRead);
+
+            //加密文件用于备份
+            byte[] AESKey = UserConfig.AESKey;
+            buffer = KeyStoreCoder.aesEncryped(buffer,AESKey);
+            aes.write(buffer,0,buffer.length);
+
             byteCount += (long)bytesRead;
             if(AyncUploadSenderPool.isFull()) {
                 Thread.sleep(100);
             }
 
         }
-
         out.flush();
+        aes.flush();
         return byteCount;
     }
 
@@ -737,12 +762,15 @@ public class RepositoryImpl implements S3Repository {
         String tempFileName = UUID.randomUUID().toString();
         String filePath = repoBaseUrl+ "/" + bucketName + "/" + tempFileName+".dat";
         String filePathXML = repoBaseUrl+ "/" + bucketName + "/" + tempFileName+".xml";
+        String aesFilePath = repoBaseUrl+ "/" + bucketName + "/" + tempFileName;
         long size = 0l;
         String etag = null;
         OutputStream bos=null;
         InputStream bis=null;
+        OutputStream aes = null;
         try {
             bos=new BufferedOutputStream(new FileOutputStream(filePath));
+            aes = new BufferedOutputStream(new FileOutputStream(aesFilePath));
 
             for (Part part : parts) {
                 size += part.getSize();
@@ -752,11 +780,17 @@ public class RepositoryImpl implements S3Repository {
                 byte[] bt=new byte[1024];
                 while (-1!=(len=bis.read(bt))) {
                     bos.write(bt, 0, len);
+                    byte[] AESKey = UserConfig.AESKey;
+                    bt = KeyStoreCoder.aesEncryped(bt,AESKey);
+                    aes.write(bt,0,bt.length);
                 }
                 bis.close();
+
             }
             bos.flush();
             bos.close();
+            aes.flush();
+            aes.close();
 
             System.out.println("File sharding merged successfully,File size====="+size);
             //                //删除分片文件
@@ -794,6 +828,7 @@ public class RepositoryImpl implements S3Repository {
                 fileMeta.setBucketname(bucketName);
                 fileMeta.setMeta(aync_meta);
                 fileMeta.setPath(filePath);
+                fileMeta.setAesPath(aesFilePath);
 
                 //将文件信息写入到本地xml中
                 writeAyncFileMeta(fileMeta,tempFileName,Paths.get(filePathXML));
@@ -815,6 +850,11 @@ public class RepositoryImpl implements S3Repository {
                     din.close();
 
                     Files.deleteIfExists(meta);
+                    Files.deleteIfExists(obj);
+                    String aesEtag = CosBackupService.uploadFile(aesFilePath,bucketName,objectKey);
+                    LOG.info("aesEtag:::"+aesEtag);
+                    Path aesPath = Paths.get(aesFilePath);
+                    Files.deleteIfExists(aesPath);
                 } catch (Exception e) {
                     LOG.info("File upload failed.444",e);
                     e.printStackTrace();

@@ -1,7 +1,5 @@
 package com.s3.user.controller.sync.task;
 
-import com.ytfs.common.SerializationUtil;
-
 import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlRootElement;
 
@@ -12,6 +10,7 @@ public class AyncFileMeta {
     private String bucketname;
     private byte[] meta;
     private String path;
+    private String aesPath;
 
     /**
      * @return the key
@@ -68,17 +67,16 @@ public class AyncFileMeta {
 //
 //    }
 
-    public static AyncFileMeta load(String path)   {
-//********************ci
-        byte[] bs = null;
-        AyncFileMeta file = new AyncFileMeta();
-        file.setBucketname("bucket-test-01");
-        file.setKey("testtt");
-        file.setPath("D:/s3cache/sync");
-        SerializationUtil.deserializeNoID(bs, file);
-        file.setMeta(bs);
-        return file;
-    }
+//    public static AyncFileMeta load(String path)   {
+//        byte[] bs = null;
+//        AyncFileMeta file = new AyncFileMeta();
+//        file.setBucketname("bucket-test-01");
+//        file.setKey("testtt");
+//        file.setPath("D:/s3cache/sync");
+//        SerializationUtil.deserializeNoID(bs, file);
+//        file.setMeta(bs);
+//        return file;
+//    }
 
     /**
      * @return the path
@@ -95,4 +93,12 @@ public class AyncFileMeta {
         this.path = path;
     }
 
+    @XmlElement(name = "aesPath")
+    public String getAesPath() {
+        return aesPath;
+    }
+
+    public void setAesPath(String aesPath) {
+        this.aesPath = aesPath;
+    }
 }

@@ -4,6 +4,7 @@ import com.ytfs.client.UploadObject;
 import com.ytfs.client.s3.ObjectHandler;
 import com.ytfs.common.SerializationUtil;
 import com.ytfs.common.ServiceException;
+import de.mindconsulting.s3storeboot.service.CosBackupService;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
@@ -75,15 +76,23 @@ public class AyncSender extends Thread {
                 }
 
                 LOG.info(req.getKey() + " uploaded successfully................");
-                //删除缓存文件
+                //Back up to tencent cloud
+                String etag = CosBackupService.uploadFile(req.getAesPath(),req.getBucketname(),req.getKey());
+                LOG.info("BACKUP COMPLETE，etag:::"+etag);
+                //Delete Cache file
                 LOG.info("Delete ******* CACHE FILE...........");
                 Path obj = Paths.get(req.getPath());
                 String xmlMeta = header.get("xmlMeta");
                 Path xml = Paths.get(xmlMeta);
+
+                Path aesPath = Paths.get(req.getAesPath());
                 try {
                     AyncUploadSenderPool.notice(req);
+
                     Files.delete(xml);
                     Files.delete(obj);
+                    Files.delete(aesPath);
+
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
