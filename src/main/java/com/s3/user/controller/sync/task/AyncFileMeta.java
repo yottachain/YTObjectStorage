@@ -11,6 +11,7 @@ public class AyncFileMeta {
     private byte[] meta;
     private String path;
     private String aesPath;
+    private String cosBucket;
 
     /**
      * @return the key
@@ -100,5 +101,13 @@ public class AyncFileMeta {
 
     public void setAesPath(String aesPath) {
         this.aesPath = aesPath;
+    }
+
+    public String getCosBucket() {
+        return cosBucket;
+    }
+    @XmlElement(name = "aesBucket")
+    public void setCosBucket(String cosBucket) {
+        this.cosBucket = cosBucket;
     }
 }

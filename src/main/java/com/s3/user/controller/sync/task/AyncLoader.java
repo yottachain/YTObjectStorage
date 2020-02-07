@@ -26,55 +26,69 @@ public class AyncLoader extends Thread {
     }
 
     private String SYNC_DIR;
+    private String cosBackUp;
 
-    AyncLoader(String SYNC_DIR) {
+    AyncLoader(String SYNC_DIR,String cosBackUp) {
         this.SYNC_DIR = SYNC_DIR;
+        this.cosBackUp = cosBackUp;
     }
 
     @Override
     public void run() {
         LOG.info("System start initiate asynchronous file upload task...");
         LOG.info("SYNC_DIR====" + SYNC_DIR);
-        Path syncDir = Paths.get(SYNC_DIR);
+//        Path syncDir = Paths.get(SYNC_DIR+"/"+"xml");
 
-        String[] objectList = new File(SYNC_DIR).list();
+        String[] objectList = new File(SYNC_DIR+"/"+"xml").list();
+        String xmlPath = SYNC_DIR + "/" + "xml";
+        String cosPath = SYNC_DIR + "/" + "cos_xml";
+        if(objectList == null) {
+            return;
+        }
         LOG.info("File count::::" + objectList.length);
         if(objectList.length > 0) {
             for(int i=0;i<objectList.length;i++) {
-                File file = new File(SYNC_DIR+"/"+objectList[i]);
-                String[] nameList = file.list(((dir, name) -> name.endsWith(".xml") || new File(name).isDirectory()));
-                if(nameList != null && nameList.length > 0 ) {
-                    //解析XML文件
-                    for(int ii=0;ii<nameList.length;ii++) {
-                        String metaPath = file.getPath()+"/"+nameList[ii];
-                        Path meta = Paths.get(metaPath);
-                        AyncFileMeta fileMeta = loadAyncFileMeta(meta);
-                        boolean b = AyncUploadSenderPool.addAyncFileMeta(fileMeta);
-                        if (b) {
-                            LOG.info("ok");
-                        }
-                    }
+                File file = new File(SYNC_DIR+"/"+"xml"+"/"+objectList[i]);
+                Path meta = Paths.get(file.getPath());
+                AyncFileMeta fileMeta = loadAyncFileMeta(meta);
+                boolean b = AyncUploadSenderPool.addAyncFileMeta(fileMeta);
+                if (b) {
+                    LOG.info("ok");
                 }
                 LOG.info("******************************");
 
             }
+            if("on".equals(cosBackUp)) {
+                addAyncPool(xmlPath,cosPath);
+            }
+
+        } else {
+            if("on".equals(cosBackUp)) {
+                addAyncPool(xmlPath,cosPath);
+            }
         }
 
-//        List<AyncFileMeta> list = new ArrayList();
-//        if (objectList.length > 0) {
-//            for (int i = 0; i < objectList.length; i++) {
-//                String filePath = syncDir.toString() + "/" + objectList[i];
-//                AyncFileMeta meta = AyncFileMeta.load(filePath);
-//                LOG.info("File path is ::::" + filePath);
-//                list.add(meta);
-//            }
-//        }
-//        while (!list.isEmpty()) {
-//            AyncFileMeta meta = list.get(0);
-//            boolean b = AyncUploadSenderPool.addAyncFileMeta(meta);
-//            if (b) {
-//                list.remove(meta);
-//            }
+    }
+
+    //cos文件加入线程池
+    private  void addAyncPool(String xmlPath,String cosXml) {
+        String[] objectList = new File(xmlPath).list();
+        String[] cos_List = new File(cosXml).list();
+        LOG.info("object_list[]......"+objectList.length);
+        LOG.info("The queue length========="+AyncUploadSenderPool.queue.size());
+//        if(objectList.length < 2 && AyncUploadSenderPool.queue.size() < 5) {
+            if(cos_List != null) {
+                for(int i=0;i<cos_List.length;i++) {
+                    File file = new File(cosXml + "/" + cos_List[i]);
+                    Path meta = Paths.get(file.getPath());
+                    AyncFileMeta fileMeta = loadAyncFileMeta(meta);
+                    fileMeta.setPath("cos");
+                    boolean b = AyncUploadSenderPool.addAyncFileMeta(fileMeta);
+                    if (b) {
+                        LOG.info("ok");
+                    }
+                }
+            }
 //        }
 
     }

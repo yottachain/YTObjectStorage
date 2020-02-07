@@ -3,11 +3,18 @@ package de.mindconsulting.s3storeboot.config;
 import com.s3.user.controller.sync.task.AyncUploadSenderPool;
 import com.ytfs.client.ClientInitor;
 import com.ytfs.client.Configurator;
+import com.ytfs.common.codec.AESCoder;
+import com.ytfs.common.codec.KeyStoreCoder;
+import com.ytfs.common.conf.UserConfig;
 import de.mc.ladon.s3server.logging.LoggingRepository;
 import de.mc.ladon.s3server.logging.PerformanceLoggingFilter;
 import de.mc.ladon.s3server.repository.api.S3Repository;
 import de.mc.ladon.s3server.servlet.S3Servlet;
 import de.mindconsulting.s3storeboot.repository.impl.RepositoryImpl;
+import de.mindconsulting.s3storeboot.util.AESUtil;
+import de.mindconsulting.s3storeboot.util.PropertiesUtil;
+import net.sf.json.JSONObject;
+import org.apache.log4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -16,10 +23,19 @@ import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 
 @Configuration
 @Component
@@ -29,14 +45,9 @@ public class BeanConfig {
     String fsRepoRoot;
     @Value("${server.port}")
     String port;
-    @Value("${s3server.superNodeID}")
-    String superNodeID;
-    @Value("${s3server.superNodeAddr1}")
-    String superNodeAddr1;
     @Value("${s3server.userID}")
     String userID;
-    @Value("${s3server.KUSp}")
-    String KUSp;
+
     @Value("${s3server.superNodeNum}")
     String superNodeNum;
     @Value("${s3server.port}")
@@ -47,9 +58,6 @@ public class BeanConfig {
     int allowMaxSize;
     @Value("${s3server.url}")
     public String url;
-    @Value("${s3server.username}")
-    String username;
-
     @Value("${s3server.uploadShardThreadNum}")
     int uploadShardThreadNum;
     @Value("${s3server.downloadThread}")
@@ -76,17 +84,40 @@ public class BeanConfig {
     int queueSize;
     @Value("${s3server.syncCount}")
     int syncCount;
+    @Value("${s3server.dirctory}")
+    String dirctory;
+    @Value("${s3server.cosBucket}")
+    String cosBucket;
+    @Value("${s3server.cosBackUp}")
+    String cosBackUp;
+
+    private static final Logger LOG = Logger.getLogger(BeanConfig.class);
 
     @ConditionalOnMissingBean
     @Bean
     S3Repository s3Repository() {
-        return new RepositoryImpl(fsRepoRoot,accessKey,allowMaxSize,status_sync,syncBucketName,syncCount);
+        return new RepositoryImpl(fsRepoRoot,accessKey,allowMaxSize,status_sync,syncBucketName,syncCount,cosBucket,cosBackUp);
     }
 
     @Bean
     ServletRegistrationBean s3Registration(S3ServletConfiguration config, S3Repository repository) throws IOException {
-        init();
-        AyncUploadSenderPool.init(fsRepoRoot,queueSize,syncCount);
+//        init();
+//        String cert_path = System.getProperty("yts3.conf", "conf/yts3.conf");
+        String cert_path = dirctory + "/"+"yts3.conf";
+        LOG.info("cert_path===="+cert_path);
+
+//        String cert = readCert("D:/NEW-WORK/application.properties");
+        String cert = readCert(cert_path);
+
+        if(!"".equals(cert)) {
+            JSONObject jsonStr = JSONObject.fromObject(cert);
+
+            String KUSp = jsonStr.getString("privateKey");
+            String username = jsonStr.getString("username");
+            init(KUSp,username);
+        }
+
+        AyncUploadSenderPool.init(fsRepoRoot,queueSize,syncCount,cosBackUp);
         ServletRegistrationBean bean = new ServletRegistrationBean();
         bean.setName("s3servlet");
         bean.setAsyncSupported(true);
@@ -102,16 +133,53 @@ public class BeanConfig {
         return bean;
     }
 
+    private String readCert(String propertiesPath) {
+//        String cert_path = System.getProperty("cert", "conf/cert");
+        String cert_path = dirctory +"/"+ "cert";
+        Path path = Paths.get(cert_path);
+        if (!Files.exists(path)) {
+            return "";
+        } else {
+            PropertiesUtil p = new PropertiesUtil(propertiesPath);
+            String SHA256_KEY = p.readProperty("SHA256_KEY");
+            UserConfig.AESKey = KeyStoreCoder.generateUserKey(SHA256_KEY.getBytes());
+            AESCoder coder = null;
+            try {
+                coder = new AESCoder(Cipher.DECRYPT_MODE);
+            } catch (NoSuchAlgorithmException e) {
+                e.printStackTrace();
+            } catch (NoSuchPaddingException e) {
+                e.printStackTrace();
+            } catch (InvalidKeyException e) {
+                e.printStackTrace();
+            }
 
-    private  void init() throws IOException {
+            byte[] data1 = new byte[0];
+            try {
+                data1 = AESUtil.getBytesFromFile(new File(cert_path));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            byte[] data2 = new byte[0];
+            try {
+                data2 = coder.doFinal(data1);
+            } catch (IllegalBlockSizeException e) {
+                e.printStackTrace();
+            } catch (BadPaddingException e) {
+                e.printStackTrace();
+            }
 
-        List<String> list = Arrays.asList(superNodeAddr1.split(","));
+            return new String(data2);
+        }
+    }
+
+    private  void init(String private_key,String user_name) throws IOException {
+
         Configurator cfg = new Configurator();
-        cfg.setKUSp(KUSp);
-        cfg.setSuperNodeAddrs(list);
-        cfg.setSuperNodeID(superNodeID);
+
         cfg.setTmpFilePath(fsRepoRoot);
-        cfg.setUsername(username);
+        cfg.setKUSp(private_key);
+        cfg.setUsername(user_name);
         cfg.setUploadShardThreadNum(uploadShardThreadNum);
         cfg.setDownloadThread(downloadThread);
         cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
@@ -121,6 +189,29 @@ public class BeanConfig {
         cfg.setZipkinServer(zipkinServer);
         ClientInitor.init(cfg);
     }
+//    @Bean
+//    public CorsConfiguration buildConfig() {
+//        LOG.info("cros***********************************");
+//
+//        CorsConfiguration corsConfiguration = new CorsConfiguration();
+//        corsConfiguration.addAllowedOrigin("*");
+//        corsConfiguration.addAllowedHeader("*");
+//        corsConfiguration.addAllowedMethod("*");
+//        corsConfiguration.setAllowCredentials(true);
+//        return corsConfiguration;
+//    }
+
+    //springboot 2.0以上的方式
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**")
+                .allowedHeaders("Content-Type","X-Requested-With","accept,Origin","Access-Control-Request-Method","Access-Control-Request-Headers","token")
+                .allowedMethods("*")
+                .allowedOrigins("*")
+                .allowCredentials(true);
+    }
+
+
+
 
     @Bean
     @ConditionalOnProperty(value = "s3server.loggingEnabled" , havingValue = "true")

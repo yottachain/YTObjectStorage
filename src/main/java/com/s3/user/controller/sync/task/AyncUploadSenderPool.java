@@ -16,6 +16,7 @@ public class AyncUploadSenderPool {
     String SYNC_DIR;
     int queueSize;
     int syncCount;
+    String cosBackUp;
     private AyncSender[] senders;
     static ArrayBlockingQueue<AyncFileMeta> queue;
     private static AyncUploadSenderPool instance = null;
@@ -36,7 +37,7 @@ public class AyncUploadSenderPool {
         return instance;
     }
 
-    public static void init(String SYNC_DIR, int queueSize, int syncCount) {
+    public static void init(String SYNC_DIR, int queueSize, int syncCount,String cosBackUp) {
         if (instance == null) {
             instance = new AyncUploadSenderPool();
 
@@ -51,9 +52,10 @@ public class AyncUploadSenderPool {
             instance.SYNC_DIR = SYNC_DIR;
             instance.queueSize = queueSize;
             instance.syncCount = syncCount;
+            instance.cosBackUp = cosBackUp;
             instance.start();
 
-            AyncLoader loader = new AyncLoader(instance.SYNC_DIR);
+            AyncLoader loader = new AyncLoader(instance.SYNC_DIR,instance.cosBackUp);
             loader.start();
         }
     }
