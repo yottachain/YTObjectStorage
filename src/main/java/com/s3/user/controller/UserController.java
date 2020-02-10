@@ -50,14 +50,22 @@ public class UserController {
 
     @Value("${s3server.fsrepo.root}")
     String fsRepoRoot;
-    @Value("${s3server.SYNC_BUCKET}")
-    String syncBucketName;
-    @Value("${s3server.dirctory}")
-    String dirctory;
-
     @Value("${s3server.eosHistoryUrl}")
     String eosHistoryUrl;
-
+    @Value("${s3server.uploadShardThreadNum}")
+    int uploadShardThreadNum;
+    @Value("${s3server.downloadThread}")
+    int downloadThread ;
+    @Value("${s3server.PNN}")
+    int PNN;
+    @Value("${s3server.PTR}")
+    int PTR;
+    @Value("${s3server.RETRYTIMES}")
+    int RETRYTIMES;
+    @Value("${s3server.dirctory}")
+    String dirctory;
+    @Value(("${s3server.uploadFileMaxMemory}"))
+    String setUploadFileMaxMemory;
 
 
     @RequestMapping(value = "/getUserStat",method = RequestMethod.GET)
@@ -357,18 +365,15 @@ public class UserController {
 
     //用户注册成功后初始化
     private  void init(String KUSp,String username) throws IOException {
-//        PropertiesUtil p = new PropertiesUtil("D:/NEW-WORK/application.properties");
         Configurator cfg = new Configurator();
         cfg.setKUSp(KUSp);
-        cfg.setTmpFilePath("s3server.fsrepo.root");
         cfg.setUsername(username);
-        cfg.setUploadShardThreadNum("s3server.uploadShardThreadNum");
-        cfg.setDownloadThread("s3server.downloadThread");
-        cfg.setUploadBlockThreadNum("s3server.uploadBlockThreadNum");
-        cfg.setPNN("s3server.PNN");
-        cfg.setPTR("s3server.PTR");
-        cfg.setRETRYTIMES("s3server.RETRYTIMES");
-        cfg.setZipkinServer("s3server.zipkinServer");
+        cfg.setUploadShardThreadNum(uploadShardThreadNum);
+        cfg.setDownloadThread(downloadThread);
+        cfg.setUploadFileMaxMemory(setUploadFileMaxMemory);
+        cfg.setPNN(PNN);
+        cfg.setPTR(PTR);
+        cfg.setRETRYTIMES(RETRYTIMES);
         ClientInitor.init(cfg);
     }
 
@@ -387,7 +392,7 @@ public class UserController {
     @RequestMapping(value = "/get_version",method = RequestMethod.GET)
     @ResponseBody
     public String getVersion(HttpServletRequest request, HttpServletResponse response) {
-        String version_info = "{\"version\":\"1.0.0.5\",\"Date\":\"2020-02-07\"}";
+        String version_info = "{\"version\":\"1.0.0.6\",\"Date\":\"2020-02-10\"}";
         response.setHeader("Access-Control-Allow-Origin","*");
         return version_info;
     }

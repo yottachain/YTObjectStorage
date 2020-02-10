@@ -62,8 +62,8 @@ public class BeanConfig {
     int uploadShardThreadNum;
     @Value("${s3server.downloadThread}")
     int downloadThread ;
-    @Value("${s3server.uploadBlockThreadNum}")
-    int uploadBlockThreadNum;
+//    @Value("${s3server.uploadBlockThreadNum}")
+//    int uploadBlockThreadNum;
 
     @Value("${s3server.PNN}")
     int PNN;
@@ -90,6 +90,8 @@ public class BeanConfig {
     String cosBucket;
     @Value("${s3server.cosBackUp}")
     String cosBackUp;
+    @Value(("${s3server.uploadFileMaxMemory}"))
+    String setUploadFileMaxMemory;
 
     private static final Logger LOG = Logger.getLogger(BeanConfig.class);
 
@@ -177,12 +179,13 @@ public class BeanConfig {
 
         Configurator cfg = new Configurator();
 
-        cfg.setTmpFilePath(fsRepoRoot);
+//        cfg.setTmpFilePath("");
         cfg.setKUSp(private_key);
         cfg.setUsername(user_name);
         cfg.setUploadShardThreadNum(uploadShardThreadNum);
         cfg.setDownloadThread(downloadThread);
-        cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
+//        cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
+        cfg.setUploadFileMaxMemory(setUploadFileMaxMemory);
         cfg.setPNN(PNN);
         cfg.setPTR(PTR);
         cfg.setRETRYTIMES(RETRYTIMES);
