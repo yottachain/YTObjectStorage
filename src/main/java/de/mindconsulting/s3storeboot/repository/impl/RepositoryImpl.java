@@ -401,6 +401,7 @@ public class RepositoryImpl implements S3Repository {
         }
 
         if ("on".equals(status_sync)) {
+            LOG.info("AYNC UPLOAD STARTING...........");
             this.ayncFileUpload(callContext,bucketName,objectKey);
             return null;
         }else {
@@ -678,13 +679,13 @@ public class RepositoryImpl implements S3Repository {
             //腾讯云备份*************
 
             byte[] md5bytes = din.getMessageDigest().digest();
-            String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
-            String md5 = callContext.getHeader().getContentMD5();
-            if (callContext.getHeader().getContentLength() != null && callContext.getHeader().getContentLength() != bytesCopied
-                    || md5 != null && !md5.equals(storageMd5base64)) {
-                Files.delete(filePath);
-                throw new InvalidDigestException(objectKey, callContext.getRequestId());
-            }
+//            String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
+//            String md5 = callContext.getHeader().getContentMD5();
+//            if (callContext.getHeader().getContentLength() != null && callContext.getHeader().getContentLength() != bytesCopied
+//                    || md5 != null && !md5.equals(storageMd5base64)) {
+//                Files.delete(filePath);
+//                throw new InvalidDigestException(objectKey, callContext.getRequestId());
+//            }
 
             String storageMd5base16 = Encoding.toHex(md5bytes);
 
