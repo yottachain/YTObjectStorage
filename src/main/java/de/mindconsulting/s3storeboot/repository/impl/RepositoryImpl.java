@@ -709,15 +709,23 @@ public class RepositoryImpl implements S3Repository {
             fileMeta.setPath(filePath.toString());
 
             //腾讯云备份*************
-            fileMeta.setAesPath(aesFilePath.toString());
-            LOG.info("cos_bucket========"+cosBucket);
-            fileMeta.setCosBucket(cosBucket);
+            if("on".equals(cosBackUp)) {
+                fileMeta.setAesPath(aesFilePath.toString());
+                LOG.info("cos_bucket========"+cosBucket);
+                fileMeta.setCosBucket(cosBucket);
+            }
+
             //腾讯云备份*************
 
 
             fileMeta.setBucketname(bucketName);
+            byte[] meta = null;
+            if("on".equals(cosBackUp)) {
+                meta = getMeta(filePath.toString(),filePathXML.toString(),cosPathXML.toString(),etag);
+            } else {
+                meta = getMeta(filePath.toString(),filePathXML.toString(),null,etag);
+            }
 
-            byte[] meta = getMeta(filePath.toString(),filePathXML.toString(),cosPathXML.toString(),etag);
             fileMeta.setMeta(meta);
             writeAyncFileMeta(fileMeta,tempFileName,filePathXML);
 
@@ -778,7 +786,9 @@ public class RepositoryImpl implements S3Repository {
         header.put("x-amz-date",(new Date()).getTime()+"");
         //将完整的xml路径保存在meta中
         header.put("xmlMeta",xmlMeta);
-        header.put("cosMeta",cosMeta);
+        if(cosMeta != null) {
+            header.put("cosMeta",cosMeta);
+        }
         header.put("ETag",etag);
 
         return SerializationUtil.serializeMap(header);
@@ -1256,7 +1266,6 @@ public class RepositoryImpl implements S3Repository {
         //isObjectExist 为true,表示可以从链上获取到文件，为false则说明当前文件在当前bucket下不存在
         boolean isObjectExist = false;
         ObjectId versionId = null;
-        try {
             String versionIdd = callContext.getParams().getAllParams().get("versionId");
             if(null == versionIdd || "".equals(versionIdd)) {
                 versionIdd = null;
@@ -1264,14 +1273,11 @@ public class RepositoryImpl implements S3Repository {
                 versionId = new ObjectId(versionIdd);
             }
 
-            isObjectExist = ObjectHandler.isExistObject(bucketName,objectKey,versionId);
-            if(isObjectExist == false) {
-//                return;
-                throw new NoSuchKeyException(objectKey, callContext.getRequestId());
-            }
-        } catch (ServiceException e) {
-            e.printStackTrace();
-        }
+//            isObjectExist = ObjectHandler.isExistObject(bucketName,objectKey,versionId);
+//            if(isObjectExist == false) {
+////                return;
+//                throw new NoSuchKeyException(objectKey, callContext.getRequestId());
+//            }
 
         //防止链上有bucket，本地没有，下载文件之前提前创建，目的是从链上拿到的文件先放至缓存中
 //        Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);

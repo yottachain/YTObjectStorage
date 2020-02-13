@@ -86,10 +86,6 @@ public class AyncSender extends Thread {
                             Files.delete(aesPath);
                         }
 
-        //                //Delete Cache file
-//                        LOG.info("Delete ****cos*** CACHE FILE......2.....");
-//                        Path aesPath = Paths.get(req.getAesPath());
-//                        Files.delete(aesPath);
                         String cosMeta = header.get("cosMeta");
                         LOG.info("cosMeta======"+cosMeta);
                         Path xml = Paths.get(cosMeta);
@@ -111,20 +107,18 @@ public class AyncSender extends Thread {
                             if("ERR".equals(status)) {
                                 ProgressUtil.removeUserHDDStatus();
                             }
+                            Path obj = Paths.get(req.getPath());
+                            String xmlMeta = header.get("xmlMeta");
+                            Path xml = Paths.get(xmlMeta);
+                            Files.delete(obj);
+                            Files.delete(xml);
+                            req.setPath("cos");
+                            //
+                            LOG.info("cos status is "+AyncUploadSenderPool.newInstance().cosBackUp);
+                            if("on".equals(AyncUploadSenderPool.newInstance().cosBackUp)) {
+                                AyncUploadSenderPool.putAyncFileMeta(req);
+                            }
                         }
-
-                        Path obj = Paths.get(req.getPath());
-                        String xmlMeta = header.get("xmlMeta");
-                        Path xml = Paths.get(xmlMeta);
-                        Files.delete(obj);
-                        Files.delete(xml);
-                        req.setPath("cos");
-                        //
-                        LOG.info("cos status is "+AyncUploadSenderPool.newInstance().cosBackUp);
-                        if("on".equals(AyncUploadSenderPool.newInstance().cosBackUp)) {
-                            AyncUploadSenderPool.putAyncFileMeta(req);
-                        }
-
                     }
                 } catch (IOException | ServiceException | InterruptedException e) {
                     if("2".equals(e.getMessage())) {

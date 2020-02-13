@@ -102,12 +102,13 @@ public class CosBackupService {
         if("on".equals(cosBackUp)) {
             byte[] data2 = coder.doFinal();
             aes.write(data2);
+            aes.flush();
         }
 
         //腾讯云备份*************
 
         out.flush();
-        aes.flush();
+
         return byteCount;
     }
 

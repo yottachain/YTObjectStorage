@@ -64,8 +64,10 @@ public class UserController {
     int RETRYTIMES;
     @Value("${s3server.dirctory}")
     String dirctory;
-    @Value(("${s3server.uploadFileMaxMemory}"))
+    @Value("${s3server.uploadFileMaxMemory}")
     String setUploadFileMaxMemory;
+    @Value("${s3server.uploadBlockThreadNum}")
+    String uploadBlockThreadNum;
 
 
     @RequestMapping(value = "/getUserStat",method = RequestMethod.GET)
@@ -374,6 +376,7 @@ public class UserController {
         cfg.setPNN(PNN);
         cfg.setPTR(PTR);
         cfg.setRETRYTIMES(RETRYTIMES);
+        cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
         ClientInitor.init(cfg);
     }
 
@@ -392,7 +395,7 @@ public class UserController {
     @RequestMapping(value = "/get_version",method = RequestMethod.GET)
     @ResponseBody
     public String getVersion(HttpServletRequest request, HttpServletResponse response) {
-        String version_info = "{\"version\":\"1.0.0.6\",\"Date\":\"2020-02-10\"}";
+        String version_info = "{\"version\":\"1.0.0.7\",\"Date\":\"2020-02-13\"}";
         response.setHeader("Access-Control-Allow-Origin","*");
         return version_info;
     }

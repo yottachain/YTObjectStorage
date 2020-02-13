@@ -62,8 +62,8 @@ public class BeanConfig {
     int uploadShardThreadNum;
     @Value("${s3server.downloadThread}")
     int downloadThread ;
-//    @Value("${s3server.uploadBlockThreadNum}")
-//    int uploadBlockThreadNum;
+    @Value("${s3server.uploadBlockThreadNum}")
+    int uploadBlockThreadNum;
 
     @Value("${s3server.PNN}")
     int PNN;
@@ -184,7 +184,7 @@ public class BeanConfig {
         cfg.setUsername(user_name);
         cfg.setUploadShardThreadNum(uploadShardThreadNum);
         cfg.setDownloadThread(downloadThread);
-//        cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
+        cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
         cfg.setUploadFileMaxMemory(setUploadFileMaxMemory);
         cfg.setPNN(PNN);
         cfg.setPTR(PTR);
