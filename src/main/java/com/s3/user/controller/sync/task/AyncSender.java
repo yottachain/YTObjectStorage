@@ -101,26 +101,39 @@ public class AyncSender extends Thread {
                             uploadObject = new UploadObject(req.getPath());
                             ProgressUtil.putUploadObject(req.getBucketname(),req.getKey(),uploadObject);
                             uploadObject.upload();
+
                             ObjectHandler.createObject(req.getBucketname(), req.getKey(), uploadObject.getVNU(), bs);
+                            if(uploadObject.getProgress() == 100) {
+                                Path obj = Paths.get(req.getPath());
+                                String xmlMeta = header.get("xmlMeta");
+                                Path xml = Paths.get(xmlMeta);
+                                LOG.info("xml======="+xml);
+                                LOG.info("obj======="+obj);
+                                if(Files.exists(obj)) {
+                                    Files.delete(obj);
+                                }
+                                if(Files.exists(xml)) {
+                                    Files.delete(xml);
+                                }
+                            }
                             LOG.info("[ "+req.getKey() +" ]"+ " uploaded successfully................");
+
                             String status = ProgressUtil.getUserHDDStatus();
+                            LOG.info("status ========="+status);
                             if("ERR".equals(status)) {
                                 ProgressUtil.removeUserHDDStatus();
                             }
-                            Path obj = Paths.get(req.getPath());
-                            String xmlMeta = header.get("xmlMeta");
-                            Path xml = Paths.get(xmlMeta);
-                            Files.delete(obj);
-                            Files.delete(xml);
-                            req.setPath("cos");
+
                             //
                             LOG.info("cos status is "+AyncUploadSenderPool.newInstance().cosBackUp);
                             if("on".equals(AyncUploadSenderPool.newInstance().cosBackUp)) {
+                                req.setPath("cos");
                                 AyncUploadSenderPool.putAyncFileMeta(req);
                             }
                         }
                     }
                 } catch (IOException | ServiceException | InterruptedException e) {
+                    LOG.info("Exception*****",e);
                     if("2".equals(e.getMessage())) {
                         ProgressUtil.putUserHDDStatus("ERR");
                         AyncUploadSenderPool.notice(req);
@@ -129,6 +142,7 @@ public class AyncSender extends Thread {
                         break;
                     } else {
                         String status = ProgressUtil.getUserHDDStatus();
+                        LOG.info("status ************"+status);
                         if("ERR".equals(status)) {
                             ProgressUtil.removeUserHDDStatus();
                         }
