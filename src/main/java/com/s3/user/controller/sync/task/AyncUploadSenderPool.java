@@ -81,6 +81,7 @@ public class AyncUploadSenderPool {
     public static void putAyncFileMeta(AyncFileMeta req)  {
         try {
 //            req.save();
+            LOG.info("ADD QUEUE..........");
             newInstance().queue.put(req);
         } catch (InterruptedException  ex) {
             LOG.info("err::",ex);

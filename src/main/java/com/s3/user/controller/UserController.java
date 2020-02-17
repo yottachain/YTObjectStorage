@@ -17,6 +17,7 @@ import io.jafka.jeos.util.KeyUtil;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.apache.log4j.Logger;
+//import org.bson.types.ObjectId;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -395,7 +396,7 @@ public class UserController {
     @RequestMapping(value = "/get_version",method = RequestMethod.GET)
     @ResponseBody
     public String getVersion(HttpServletRequest request, HttpServletResponse response) {
-        String version_info = "{\"version\":\"1.0.0.7\",\"Date\":\"2020-02-13\"}";
+        String version_info = "{\"version\":\"1.0.0.8\",\"Date\":\"2020-02-17\"}";
         response.setHeader("Access-Control-Allow-Origin","*");
         return version_info;
     }

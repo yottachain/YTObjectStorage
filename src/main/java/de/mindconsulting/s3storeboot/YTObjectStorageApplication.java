@@ -1,5 +1,5 @@
 //package de.mindconsulting.s3storeboot;
-//
+
 //import org.apache.catalina.connector.Connector;
 //import org.apache.log4j.Logger;
 //import org.springframework.boot.SpringApplication;

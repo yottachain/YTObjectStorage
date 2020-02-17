@@ -70,6 +70,7 @@ public class AyncSender extends Thread {
 
                 header = SerializationUtil.deserializeMap(bs);
                 String fileLength = header.get("contentLength");
+                LOG.info("cos is "+"cos".equals(req.getPath()) + "!!!!!!");
                 try {
                     if("cos".equals(req.getPath())) {
                         //执行腾讯云备份
@@ -94,16 +95,19 @@ public class AyncSender extends Thread {
                         }
                     } else {
                         if("0".equals(fileLength)) {
+                            LOG.info("FILE is length===="+fileLength+",HERE...........11111.........");
                             ObjectId VNU = new ObjectId("000000000000000000000000");
                             ObjectHandler.createObject(req.getBucketname(), req.getKey(), VNU, bs);
                             LOG.info("[ "+req.getKey() +" ]"+ " uploaded successfully................");
                         } else {
+                            LOG.info("FILE is length===="+fileLength+",HERE....................");
                             uploadObject = new UploadObject(req.getPath());
                             ProgressUtil.putUploadObject(req.getBucketname(),req.getKey(),uploadObject);
                             uploadObject.upload();
 
                             ObjectHandler.createObject(req.getBucketname(), req.getKey(), uploadObject.getVNU(), bs);
-                            if(uploadObject.getProgress() == 100) {
+                            int num = uploadObject.getProgress();
+                            if(num == 100) {
                                 Path obj = Paths.get(req.getPath());
                                 String xmlMeta = header.get("xmlMeta");
                                 Path xml = Paths.get(xmlMeta);

@@ -1066,6 +1066,8 @@ public class RepositoryImpl implements S3Repository {
             map.put("contentLength",contentLength);
             map.put("content-length",contentLength);
             byte[] newHeaderByte = SerializationUtil.serializeMap(map);
+            LOG.info("HERE IS WRITE.............status_aync..."+status_sync);
+            LOG.info("on".equals(status_sync));
             //准备在此加异步上传。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。
             if("on".equals(status_sync)) {
                 byte[] aync_meta = getMeta(filePath,filePathXML,cosXML,etag);
@@ -1088,6 +1090,7 @@ public class RepositoryImpl implements S3Repository {
 
 
                 //将上传请求加入到队列
+                LOG.info("AYNC QUEuE.........................................");
                 AyncUploadSenderPool.putAyncFileMeta(fileMeta);
 
 
