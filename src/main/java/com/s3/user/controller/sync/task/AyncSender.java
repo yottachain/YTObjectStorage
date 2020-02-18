@@ -98,6 +98,17 @@ public class AyncSender extends Thread {
                             LOG.info("FILE is length===="+fileLength+",HERE...........11111.........");
                             ObjectId VNU = new ObjectId("000000000000000000000000");
                             ObjectHandler.createObject(req.getBucketname(), req.getKey(), VNU, bs);
+                            Path obj = Paths.get(req.getPath());
+                            String xmlMeta = header.get("xmlMeta");
+                            Path xml = Paths.get(xmlMeta);
+                            LOG.info("xml======="+xml);
+                            LOG.info("obj======="+obj);
+                            if(Files.exists(obj)) {
+                                Files.delete(obj);
+                            }
+                            if(Files.exists(xml)) {
+                                Files.delete(xml);
+                            }
                             LOG.info("[ "+req.getKey() +" ]"+ " uploaded successfully................");
                         } else {
                             LOG.info("FILE is length===="+fileLength+",HERE....................");
