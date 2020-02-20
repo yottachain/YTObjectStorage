@@ -70,8 +70,10 @@ public class CosBackupService {
         String bucketName = cos_bucket + "-"+appId;
         File localFile = new File(localFilePath);
         String fileName = UserConfig.userId+"_"+bucket+"_"+objectKey;
+        LOG.info("COS FILE NAME===="+fileName);
         PutObjectRequest putObjectRequest = new PutObjectRequest(bucketName,fileName,localFile);
         PutObjectResult putObjectResult = cosClient.putObject(putObjectRequest);
+        LOG.info("COS OVER ");
         String etag = putObjectResult.getETag();
         cosClient.shutdown();
         return etag;
@@ -80,7 +82,7 @@ public class CosBackupService {
 
     public static long copy(InputStream in, OutputStream out,OutputStream aes,String cosBackUp) throws Exception {
         long byteCount = 0;
-        byte[] buffer = new byte[4096];
+        byte[] buffer = new byte[131072];
         int bytesRead = -1;
         //腾讯云备份*************
         AESCoder coder = new AESCoder(Cipher.ENCRYPT_MODE);

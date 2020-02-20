@@ -13,6 +13,7 @@ import com.ytfs.common.ServiceException;
 import com.ytfs.common.codec.AESCoder;
 import com.ytfs.service.packet.s3.entities.FileMetaMsg;
 import de.mc.ladon.s3server.common.*;
+import de.mc.ladon.s3server.common.Encoding;
 import de.mc.ladon.s3server.entities.api.*;
 import de.mc.ladon.s3server.entities.impl.*;
 import de.mc.ladon.s3server.exceptions.*;
@@ -21,8 +22,7 @@ import de.mc.ladon.s3server.repository.api.S3Repository;
 import de.mindconsulting.s3storeboot.jaxb.meta.StorageMeta;
 import de.mindconsulting.s3storeboot.jaxb.meta.UserData;
 import de.mindconsulting.s3storeboot.service.CosBackupService;
-import de.mindconsulting.s3storeboot.util.ProgressUtil;
-import de.mindconsulting.s3storeboot.util.S3Lock;
+import de.mindconsulting.s3storeboot.util.*;
 import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
 import org.w3c.dom.Document;
@@ -49,6 +49,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
+
+import static java.lang.System.out;
 
 public class RepositoryImpl implements S3Repository {
     private static final Logger LOG = Logger.getLogger(RepositoryImpl.class);
@@ -235,7 +237,7 @@ public class RepositoryImpl implements S3Repository {
         }
         String fileName = null;
         if(marker != null) {
-            System.out.println("marker=="+marker);
+            out.println("marker=="+marker);
             fileName = marker;
         }
         List<AbstractVersionElement> versions = new ArrayList<>();
@@ -739,7 +741,7 @@ public class RepositoryImpl implements S3Repository {
 
     private long ayncCopy(InputStream in, OutputStream out,OutputStream aes) throws Exception {
         long byteCount = 0L;
-        byte[] buffer = new byte[4096];
+        byte[] buffer = new byte[131072];
         AESCoder coder = new AESCoder(Cipher.ENCRYPT_MODE);
 
         int bytesRead;
@@ -899,15 +901,32 @@ public class RepositoryImpl implements S3Repository {
             //文件路径 要创建的文件，把分片数据写到此文件中
             Path file = dataBucket.resolve(obj);
 
-            DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
-            DigestInputStream dinSHA256 = new DigestInputStream(din, MessageDigest.getInstance("SHA-256"));
+            DigestInputStream din = null;
+            try {
+                din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
+            } catch (NoSuchAlgorithmException e1) {
+                e1.printStackTrace();
+            }
+            DigestInputStream dinSHA256 = null;
+            try {
+                dinSHA256 = new DigestInputStream(din, MessageDigest.getInstance("SHA-256"));
+            } catch (NoSuchAlgorithmException e1) {
+                e1.printStackTrace();
+            }
             byte[] md5bytes;
             byte[] sha256bytes;
-            try (OutputStream out = Files.newOutputStream(obj)) {
+//            try (OutputStream out = Files.newOutputStream(obj)) {
+            FileOutputStream fos = null;
+            try {
+                fos =  new FileOutputStream(obj.toString());
+            } catch (IOException e1) {
+                e1.printStackTrace();
+            }
+            BufferedOutputStream out = new BufferedOutputStream(fos);
                 long bytesCopied = 0;
                 try {
-                    bytesCopied = StreamUtils.copy(dinSHA256, out);
-                } catch (InterruptedException e) {
+                    bytesCopied = de.mindconsulting.s3storeboot.util.StreamUtils.copy(dinSHA256,out);
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
                 md5bytes = din.getMessageDigest().digest();
@@ -918,8 +937,13 @@ public class RepositoryImpl implements S3Repository {
                 if (contentLength != null && contentLength != bytesCopied
                         || md5 != null && !md5.equals(storageMd5base64)
                         || sha256!=null && !sha256.equals(storeSha256Base16)) {
-                    Files.delete(obj);
-                    Files.deleteIfExists(meta);
+                    try {
+                        Files.delete(obj);
+                        Files.deleteIfExists(meta);
+                    } catch (IOException e1) {
+                        e1.printStackTrace();
+                    }
+
                     throw new InvalidDigestException(objectKey, callContext.getRequestId());
                 }
 
@@ -939,13 +963,10 @@ public class RepositoryImpl implements S3Repository {
                 part.setFilePath(file.toString());
                 MuLtipartUploadCache.insert(uploadId,part);
 
-            }
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
+            } catch (IOException e1) {
+            e1.printStackTrace();
         }
+
     }
 
     @Override
