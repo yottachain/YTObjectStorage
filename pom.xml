@@ -77,6 +77,12 @@
 					<groupId>org.mongodb</groupId>
 					<artifactId>mongodb-driver</artifactId>
 				</exclusion>
+
+				<exclusion>
+					<groupId>MsgDef</groupId>
+					<artifactId>MsgDef</artifactId>
+				</exclusion>
+
 			</exclusions>
 		</dependency>
 
@@ -84,6 +90,12 @@
 			<groupId>MsgDef</groupId>
 			<artifactId>MsgDef</artifactId>
 			<version>1.0-SNAPSHOT</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.mongodb</groupId>
+					<artifactId>mongodb-driver</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 <!--		<dependency>-->
 <!--			<groupId>p2p-wrapper</groupId>-->

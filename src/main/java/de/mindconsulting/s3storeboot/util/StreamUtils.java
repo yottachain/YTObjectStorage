@@ -21,6 +21,7 @@ public class StreamUtils {
         }
 
         out.flush();
+        out.close();
         return byteCount;
     }
 }
