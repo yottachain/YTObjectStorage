@@ -770,11 +770,12 @@ public class RepositoryImpl implements S3Repository {
         if("on".equals(cosBackUp)) {
             byte[] data2 = coder.doFinal();
             aes.write(data2);
+            aes.close();
             aes.flush();
         }
 
         //腾讯云备份*************
-
+        out.close();
         out.flush();
 
         return byteCount;
@@ -819,10 +820,11 @@ public class RepositoryImpl implements S3Repository {
             m = jaxbContext.createMarshaller();
             m.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
             m.marshal(fileMeta, out);
-            out.close();
+//            out.close();
         }catch (IOException | JAXBException e) {
             LOG.info("err::",e);
         }
+        out.close();
     }
 
 
@@ -1051,8 +1053,9 @@ public class RepositoryImpl implements S3Repository {
 
                 bis.close();
             }
-            bos.flush();
             bos.close();
+//            bos.flush();
+
             if("on".equals(cosBackUp)){
                 aes.flush();
                 aes.close();
@@ -1063,7 +1066,9 @@ public class RepositoryImpl implements S3Repository {
             //                //删除分片文件
             for(Part part : parts) {
                 Path tempFile = Paths.get(part.getTempFilePath());
-                Files.delete(tempFile);
+                if(Files.exists(tempFile)) {
+                    Files.delete(tempFile);
+                }
             }
 
             // 如果文件不存在  将文件上传至超级节点
@@ -1089,6 +1094,8 @@ public class RepositoryImpl implements S3Repository {
             byte[] newHeaderByte = SerializationUtil.serializeMap(map);
             LOG.info("HERE IS WRITE.............status_aync..."+status_sync);
             LOG.info("on".equals(status_sync));
+            din.close();
+            in.close();
             //准备在此加异步上传。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。
             if("on".equals(status_sync)) {
                 byte[] aync_meta = getMeta(filePath,filePathXML,cosXML,etag);
@@ -1150,13 +1157,13 @@ public class RepositoryImpl implements S3Repository {
                     e.printStackTrace();
                 }finally {
                     //上传成功或者失败删除进度cache
-                    Thread.sleep(60000);
+//                    Thread.sleep(60000);
                     ProgressUtil.removeUploadObject(bucketName,objectKey);
                 }
             }
 
         }catch (Exception e) {
-            e.printStackTrace();
+            LOG.info("ERR",e);
         }
         CompleteMultipartUploadResult result = new CompleteMultipartUploadResult();
         String location = "http://"+ bucketName + ".s3.amazonaws.com/" + objectKey ;
