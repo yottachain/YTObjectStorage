@@ -820,11 +820,11 @@ public class RepositoryImpl implements S3Repository {
             m = jaxbContext.createMarshaller();
             m.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
             m.marshal(fileMeta, out);
-//            out.close();
+            out.close();
         }catch (IOException | JAXBException e) {
             LOG.info("err::",e);
         }
-        out.close();
+//        out.flush();
     }
 
 
@@ -1094,8 +1094,7 @@ public class RepositoryImpl implements S3Repository {
             byte[] newHeaderByte = SerializationUtil.serializeMap(map);
             LOG.info("HERE IS WRITE.............status_aync..."+status_sync);
             LOG.info("on".equals(status_sync));
-            din.close();
-            in.close();
+
             //准备在此加异步上传。。。。。。。。。。。。。。。。。。。。。。。。。。。。。。
             if("on".equals(status_sync)) {
                 byte[] aync_meta = getMeta(filePath,filePathXML,cosXML,etag);
@@ -1119,6 +1118,8 @@ public class RepositoryImpl implements S3Repository {
 
                 //将上传请求加入到队列
                 LOG.info("AYNC QUEuE.........................................");
+                din.close();
+                in.close();
                 AyncUploadSenderPool.putAyncFileMeta(fileMeta);
 
 
