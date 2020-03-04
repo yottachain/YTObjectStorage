@@ -167,7 +167,7 @@ public class RepositoryImpl implements S3Repository {
             LOG.info("***********CREATE BUCKET SUCCESS***********");
 
         } catch (IOException | JAXBException | ServiceException e) {
-            LOG.error("ERR_MSG: ",e);
+//            LOG.error("ERR_MSG: ",e);
             throw new InternalErrorException(bucketName, callContext.getRequestId());
         }
     }
@@ -536,24 +536,28 @@ public class RepositoryImpl implements S3Repository {
                             if("on".equals(cosBackUp)) {
                                 LOG.info("SYNC UPLOAD,Start backup COS task..................");
                                 CosBackupService cosBackupService  = new CosBackupService();
-                                String etag = cosBackupService.uploadFile(AESKyeObj.toString(),bucketName,objectKey,cosBucket);
+                                String etag = cosBackupService.uploadFile(AESKyeObj.toString(),bucketName,objectKey);
                                 LOG.info("etag coss====="+etag);
-                            }
-                            try {
-                                if(Files.exists(AESKyeObj)) {
-                                    Files.delete(AESKyeObj);
-                                }
+                                try {
+                                    if(Files.exists(AESKyeObj)) {
+                                        Files.delete(AESKyeObj);
+                                    }
 
-                            } catch (IOException e) {
-                                e.printStackTrace();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
                             }
+
                             LOG.info("SYNC UPLOAD,Complete backup COS task..................");
                             //腾讯云备份*****************************
                         } catch (Exception e) {
                             LOG.info(objectKey + "  upload failed.222",e);
-                            if(Files.exists(AESKyeObj)) {
-                                Files.delete(AESKyeObj);
+                            if("on".equals(cosBackUp)) {
+                                if(Files.exists(AESKyeObj)) {
+                                    Files.delete(AESKyeObj);
+                                }
                             }
+
                             e.printStackTrace();
                         }
 
@@ -1141,7 +1145,7 @@ public class RepositoryImpl implements S3Repository {
                     //备份到腾讯云*****************
                     if("on".equals(cosBackUp)) {
                         CosBackupService cosBackupService = new CosBackupService();
-                        String aesEtag = cosBackupService.uploadFile(aesFilePath,bucketName,objectKey,cosBucket);
+                        String aesEtag = cosBackupService.uploadFile(aesFilePath,bucketName,objectKey);
                         LOG.info("aesEtag:::"+aesEtag);
                     }
                     //备份到腾讯云*****************
