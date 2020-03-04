@@ -70,7 +70,7 @@ public class AyncSender extends Thread {
 
                 header = SerializationUtil.deserializeMap(bs);
                 String fileLength = header.get("contentLength");
-                LOG.info("cos is "+"cos".equals(req.getPath()) + "!!!!!!");
+//                LOG.info("cos is "+"cos".equals(req.getPath()) + "!!!!!!");
                 try {
                     if("cos".equals(req.getPath())) {
                         //执行腾讯云备份
@@ -80,7 +80,7 @@ public class AyncSender extends Thread {
                         if(Files.exists(Paths.get(cosPath))) {
                             LOG.info("COS BACK UP INTG.......");
                             CosBackupService cosBackupService = new CosBackupService();
-                            String etag = cosBackupService.uploadFile(req.getAesPath(),req.getBucketname(),req.getKey(),req.getCosBucket());
+                            String etag = cosBackupService.uploadFile(req.getAesPath(),req.getBucketname(),req.getKey());
                             LOG.info("BACKUP COMPLETE  etag==="+etag);
                             LOG.info("Delete ******* CACHE FILE.....1......");
                             Path aesPath = Paths.get(req.getAesPath());
@@ -95,7 +95,7 @@ public class AyncSender extends Thread {
                         }
                     } else {
                         if("0".equals(fileLength)) {
-                            LOG.info("FILE is length===="+fileLength+",HERE...........11111.........");
+//                            LOG.info("FILE is length===="+fileLength+",HERE...........11111.........");
                             ObjectId VNU = new ObjectId("000000000000000000000000");
                             ObjectHandler.createObject(req.getBucketname(), req.getKey(), VNU, bs);
                             Path obj = Paths.get(req.getPath());
@@ -140,7 +140,7 @@ public class AyncSender extends Thread {
                             }
 
                             //
-                            LOG.info("cos status is "+AyncUploadSenderPool.newInstance().cosBackUp);
+//                            LOG.info("cos status is "+AyncUploadSenderPool.newInstance().cosBackUp);
                             if("on".equals(AyncUploadSenderPool.newInstance().cosBackUp)) {
                                 req.setPath("cos");
                                 AyncUploadSenderPool.putAyncFileMeta(req);

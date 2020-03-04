@@ -33,11 +33,12 @@ public class CosBackupService {
 
     private static final Logger LOG = Logger.getLogger(CosBackupService.class);
     public static long appId = 1258989317l;
-    public static String bucketName = "tmpupload-yotta"+"-"+appId;
+    public static int userId = UserConfig.userId;
+//    public static String bucketName = "yotta"+userId%180+"-"+appId;
     public static String cos_key = "5dc3383e69bd32ca72696e98d31d4c65a4b06c60f962bdf7239d50f2e58ec6c8";
     public static String dirctory = "../conf";
 
-    public COSClient getClient() {
+    public static COSClient getClient() {
         LOG.info("directory====="+dirctory + " ,cos_key======"+cos_key);
         String jsonStr = null;
         try {
@@ -65,9 +66,13 @@ public class CosBackupService {
         return false;
     }
 
-    public String uploadFile(String localFilePath,String bucket,String objectKey,String cos_bucket) {
+    public String uploadFile(String localFilePath,String bucket,String objectKey) {
         COSClient cosClient = this.getClient();
-        String bucketName = cos_bucket + "-"+appId;
+
+        int userId = UserConfig.userId;
+        int mod = userId%180;
+        LOG.info("USER_ID = " + UserConfig.userId+",mod = "+mod);
+        String bucketName = "yotta"+mod+"-"+appId;
         File localFile = new File(localFilePath);
         String fileName = UserConfig.userId+"_"+bucket+"_"+objectKey;
         LOG.info("COS FILE NAME===="+fileName);
@@ -78,7 +83,6 @@ public class CosBackupService {
         cosClient.shutdown();
         return etag;
     }
-
 
     public static long copy(InputStream in, OutputStream out,OutputStream aes,String cosBackUp) throws Exception {
         long byteCount = 0;
@@ -114,5 +118,17 @@ public class CosBackupService {
 
         return byteCount;
     }
+
+//    public static void main(String []args) {
+//        COSClient cosClient = getClient();
+//        for(int i=180;i<181;i++) {
+//            if(i>71) {
+//                String bucketName="yotta"+i+"-"+appId;
+//                cosClient.createBucket(bucketName);
+//                LOG.info("第 "+i+" 个bucket");
+//                LOG.info("CREATE BUCKET SUCCESS:::"+bucketName);
+//            }
+//        }
+//    }
 
 }
