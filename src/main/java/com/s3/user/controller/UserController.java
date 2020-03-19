@@ -404,7 +404,7 @@ public class UserController {
     @RequestMapping(value = "/get_version",method = RequestMethod.GET)
     @ResponseBody
     public String getVersion(HttpServletRequest request, HttpServletResponse response) {
-        String version_info = "{\"version\":\"1.0.0.8\",\"Date\":\"2020-02-17\"}";
+        String version_info = "{\"version\":\"1.0.0.11\",\"Date\":\"2020-03-19\"}";
         response.setHeader("Access-Control-Allow-Origin","*");
         return version_info;
     }
