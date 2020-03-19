@@ -24,7 +24,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
-
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
@@ -90,7 +89,7 @@ public class BeanConfig {
     String cosBucket;
     @Value("${s3server.cosBackUp}")
     String cosBackUp;
-    @Value(("${s3server.uploadFileMaxMemory}"))
+    @Value("${s3server.uploadFileMaxMemory}")
     String setUploadFileMaxMemory;
 
     private static final Logger LOG = Logger.getLogger(BeanConfig.class);
@@ -98,17 +97,15 @@ public class BeanConfig {
     @ConditionalOnMissingBean
     @Bean
     S3Repository s3Repository() {
-        return new RepositoryImpl(fsRepoRoot,accessKey,allowMaxSize,status_sync,syncBucketName,syncCount,cosBucket,cosBackUp);
+
+        return new RepositoryImpl(fsRepoRoot,accessKey,allowMaxSize,status_sync,syncBucketName,syncCount,cosBucket,"on");
     }
 
     @Bean
     ServletRegistrationBean s3Registration(S3ServletConfiguration config, S3Repository repository) throws IOException {
-//        init();
-//        String cert_path = System.getProperty("yts3.conf", "conf/yts3.conf");
         String cert_path = dirctory + "/"+"yts3.conf";
         LOG.info("cert_path===="+cert_path);
 
-//        String cert = readCert("D:/NEW-WORK/application.properties");
         String cert = readCert(cert_path);
 
         if(!"".equals(cert)) {
@@ -119,7 +116,7 @@ public class BeanConfig {
             init(KUSp,username);
         }
 
-        AyncUploadSenderPool.init(fsRepoRoot,queueSize,syncCount,cosBackUp);
+        AyncUploadSenderPool.init(fsRepoRoot,queueSize,syncCount,"on");
         ServletRegistrationBean bean = new ServletRegistrationBean();
         bean.setName("s3servlet");
         bean.setAsyncSupported(true);
