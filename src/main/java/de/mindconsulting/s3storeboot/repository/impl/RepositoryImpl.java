@@ -2,8 +2,13 @@ package de.mindconsulting.s3storeboot.repository.impl;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.BaseEncoding;
+import com.qcloud.cos.COSClient;
+import com.qcloud.cos.model.COSObject;
+import com.qcloud.cos.model.COSObjectInputStream;
+import com.qcloud.cos.model.GetObjectRequest;
 import com.s3.user.controller.sync.task.AyncFileMeta;
 import com.s3.user.controller.sync.task.AyncUploadSenderPool;
+import com.ytfs.client.BackupCaller;
 import com.ytfs.client.DownloadObject;
 import com.ytfs.client.UploadObject;
 import com.ytfs.client.s3.BucketHandler;
@@ -11,9 +16,12 @@ import com.ytfs.client.s3.ObjectHandler;
 import com.ytfs.common.SerializationUtil;
 import com.ytfs.common.ServiceException;
 import com.ytfs.common.codec.AESCoder;
+import com.ytfs.common.conf.UserConfig;
 import com.ytfs.service.packet.s3.entities.FileMetaMsg;
-import de.mc.ladon.s3server.common.*;
+import de.mc.ladon.s3server.common.DelimiterUtil;
 import de.mc.ladon.s3server.common.Encoding;
+import de.mc.ladon.s3server.common.MuLtipartUploadCache;
+import de.mc.ladon.s3server.common.S3Constants;
 import de.mc.ladon.s3server.entities.api.*;
 import de.mc.ladon.s3server.entities.impl.*;
 import de.mc.ladon.s3server.exceptions.*;
@@ -22,7 +30,8 @@ import de.mc.ladon.s3server.repository.api.S3Repository;
 import de.mindconsulting.s3storeboot.jaxb.meta.StorageMeta;
 import de.mindconsulting.s3storeboot.jaxb.meta.UserData;
 import de.mindconsulting.s3storeboot.service.CosBackupService;
-import de.mindconsulting.s3storeboot.util.*;
+import de.mindconsulting.s3storeboot.util.ProgressUtil;
+import de.mindconsulting.s3storeboot.util.S3Lock;
 import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
 import org.w3c.dom.Document;
@@ -131,10 +140,10 @@ public class RepositoryImpl implements S3Repository {
             String[] buckets = BucketHandler.listBucket();
             LOG.info("bucket count:::"+buckets.length);
             if (buckets.length > 0)
-            for (String bucket : buckets) {
-                S3BucketImpl s3Bucket = new S3BucketImpl(bucket, new Date(), callContext.getUser());
-                s3Buckets.add(s3Bucket);
-            }
+                for (String bucket : buckets) {
+                    S3BucketImpl s3Bucket = new S3BucketImpl(bucket, new Date(), callContext.getUser());
+                    s3Buckets.add(s3Bucket);
+                }
 
         } catch (ServiceException e) {
             e.printStackTrace();
@@ -538,6 +547,7 @@ public class RepositoryImpl implements S3Repository {
                                 CosBackupService cosBackupService  = new CosBackupService();
                                 String etag = cosBackupService.uploadFile(AESKyeObj.toString(),bucketName,objectKey);
                                 LOG.info("etag coss====="+etag);
+                                LOG.info("SYNC UPLOAD,Complete backup COS task..................");
                                 try {
                                     if(Files.exists(AESKyeObj)) {
                                         Files.delete(AESKyeObj);
@@ -547,8 +557,6 @@ public class RepositoryImpl implements S3Repository {
                                     e.printStackTrace();
                                 }
                             }
-
-                            LOG.info("SYNC UPLOAD,Complete backup COS task..................");
                             //腾讯云备份*****************************
                         } catch (Exception e) {
                             LOG.info(objectKey + "  upload failed.222",e);
@@ -929,61 +937,80 @@ public class RepositoryImpl implements S3Repository {
                 e1.printStackTrace();
             }
             BufferedOutputStream out = new BufferedOutputStream(fos);
-                long bytesCopied = 0;
+            long bytesCopied = 0;
+            try {
+                bytesCopied = de.mindconsulting.s3storeboot.util.StreamUtils.copy(dinSHA256,out);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            md5bytes = din.getMessageDigest().digest();
+            sha256bytes = dinSHA256.getMessageDigest().digest();
+            String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
+            String storageMd5base16 = Encoding.toHex(md5bytes);
+            String storeSha256Base16 = Encoding.toHex(sha256bytes);
+            if (contentLength != null && contentLength != bytesCopied
+                    || md5 != null && !md5.equals(storageMd5base64)
+                    || sha256!=null && !sha256.equals(storeSha256Base16)) {
                 try {
-                    bytesCopied = de.mindconsulting.s3storeboot.util.StreamUtils.copy(dinSHA256,out);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                md5bytes = din.getMessageDigest().digest();
-                sha256bytes = dinSHA256.getMessageDigest().digest();
-                String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
-                String storageMd5base16 = Encoding.toHex(md5bytes);
-                String storeSha256Base16 = Encoding.toHex(sha256bytes);
-                if (contentLength != null && contentLength != bytesCopied
-                        || md5 != null && !md5.equals(storageMd5base64)
-                        || sha256!=null && !sha256.equals(storeSha256Base16)) {
-                    try {
-                        Files.delete(obj);
-                        Files.deleteIfExists(meta);
-                    } catch (IOException e1) {
-                        e1.printStackTrace();
-                    }
-
-                    throw new InvalidDigestException(objectKey, callContext.getRequestId());
+                    Files.delete(obj);
+                    Files.deleteIfExists(meta);
+                } catch (IOException e1) {
+                    e1.printStackTrace();
                 }
 
-                S3ResponseHeader header = new S3ResponseHeaderImpl();
-                String etag = inQuotes(storageMd5base16);
-                Date date = new Date(Files.getLastModifiedTime(obj).toMillis());
-                header.setEtag(etag);
-                header.setDate(date);
-                header.setContentLength(0L);
-                callContext.setResponseHeader(header);
-                Part part = new Part();
-                part.setEtag(etag);
-                part.setPartNumber(partNumber);
-                part.setSize(contentLength);
-                part.setLastModified(date);
-                part.setTempFilePath(obj.toString());
-                part.setFilePath(file.toString());
-                MuLtipartUploadCache.insert(uploadId,part);
+                throw new InvalidDigestException(objectKey, callContext.getRequestId());
+            }
 
-            } catch (IOException e1) {
+            S3ResponseHeader header = new S3ResponseHeaderImpl();
+            String etag = inQuotes(storageMd5base16);
+            Date date = new Date(Files.getLastModifiedTime(obj).toMillis());
+            header.setEtag(etag);
+            header.setDate(date);
+            header.setContentLength(0L);
+            callContext.setResponseHeader(header);
+            Part part = new Part();
+            part.setEtag(etag);
+            part.setPartNumber(partNumber);
+            part.setSize(contentLength);
+            part.setLastModified(date);
+            part.setTempFilePath(obj.toString());
+            part.setFilePath(file.toString());
+            MuLtipartUploadCache.insert(uploadId,part);
+
+        } catch (IOException e1) {
             e1.printStackTrace();
         }
 
     }
 
+    public List<Part> sortList(List<Part> parts) {
+        Collections.sort(parts, new Comparator<Part>() {
+            @Override
+            public int compare(Part o1, Part o2) {
+                if(o1.getPartNumber()<o2.getPartNumber()){
+                    return -1;
+                } else {
+                    return 1;
+                }
+            }
+            @Override
+            public boolean equals(Object obj) {
+                return false;
+            }
+        });
+        return parts;
+    }
+
+
     @Override
     public CompleteMultipartUploadResult completeMultipartUpload(S3CallContext callContext, String bucketName, String objectKey) {
         String uploadId = callContext.getParams().getAllParams().get("uploadId");
-        List<Part> parts = MuLtipartUploadCache.getParts(uploadId);
-//        String filePath = repoBaseUrl+ "/" + bucketName + "/" + "data/" +  UUID.randomUUID().toString();
+        List<Part> partsList = MuLtipartUploadCache.getParts(uploadId);
+        List<Part> parts = this.sortList(partsList);
 
         String tempFileName = UUID.randomUUID().toString();
 
-        String filePath = repoBaseUrl+ "/" + bucketName + "/" +"data"+"/"+ tempFileName+".dat";
+        String filePath = repoBaseUrl+ "/" + bucketName + "/" +"data"+"/"+ objectKey;
         String filePathXML = repoBaseUrl+ "/" + bucketName + "/"+"data"+"/" + tempFileName+".xml";
         String cosXML = "";
         if("on".equals(status_sync)) {
@@ -1000,7 +1027,7 @@ public class RepositoryImpl implements S3Repository {
             }
         }
         //腾讯云备份*************
-        String aesFilePath = repoBaseUrl+ "/" + bucketName + "/" +"data"+"/" + tempFileName;
+        String aesFilePath = repoBaseUrl+ "/" + bucketName + "/" +"data"+"/" + "cos_"+objectKey;
         AESCoder coder = null;
         try {
             coder = new AESCoder(Cipher.ENCRYPT_MODE);
@@ -1036,32 +1063,32 @@ public class RepositoryImpl implements S3Repository {
                 int len=0;
                 byte[] bt=new byte[1024];
                 while (-1!=(len=bis.read(bt))) {
-                    bos.write(bt, 0, len);
-
 
                     //腾讯云备份*************
                     if("on".equals(cosBackUp)){
-                        byte[] data1 = coder.update(bt,0,bt.length);
+                        byte[] data1 = coder.update(bt,0,len);
                         aes.write(data1);
                     }
 
+                    bos.write(bt, 0, len);
+
+
+
+
                     //腾讯云备份*************
                 }
-                //腾讯云备份*************
-                if("on".equals(cosBackUp)){
-                    byte[] data2 = coder.doFinal();
-                    aes.write(data2);
-                }
+
 
                 //腾讯云备份*************
 
                 bis.close();
             }
             bos.close();
-//            bos.flush();
 
-            if("on".equals(cosBackUp)){
-                aes.flush();
+            if("on".equals(cosBackUp)){  //腾讯云备份*************
+                byte[] data2 = coder.doFinal();
+                aes.write(data2);
+
                 aes.close();
             }
 
@@ -1288,54 +1315,64 @@ public class RepositoryImpl implements S3Repository {
         return flag;
     }
 
+    public void downloadForCos(S3CallContext callContext,String bucket,String key,boolean head){
+        int userID = UserConfig.userId;
+        int mod = userID%180;
+        String bucketName = "yotta" + mod + "-" + 1258989317;
+        String fileName = userID + "_" + bucket+"_"+ key;
+        CosBackupService cosBackupService = new CosBackupService();
+        DownloadObject obj = null;
+        try {
+            obj = new DownloadObject(bucket,key,null);
+        } catch (ServiceException e) {
+            e.printStackTrace();
+        }
+        long fileSize = obj.getLength();
+
+        cosBackupService.downloadFile(callContext,bucketName,fileName,fileSize,head);
+
+    }
+
     @Override
     public void getObject(S3CallContext callContext, String bucketName, String objectKey, boolean head) {
-
         LOG.info("head======="+head);
-
         if(callContext.getParams().getAllParams().containsKey("uploads")) {
             return;
         }
-//        boolean isBucketExist = this.checkBucketExist(bucketName);
-//        if(!isBucketExist) {
-//            throw new NoSuchBucketException(bucketName, callContext.getRequestId());
-//        }
-        //isObjectExist 为true,表示可以从链上获取到文件，为false则说明当前文件在当前bucket下不存在
-        boolean isObjectExist = false;
         ObjectId versionId = null;
-            String versionIdd = callContext.getParams().getAllParams().get("versionId");
-            if(null == versionIdd || "".equals(versionIdd)) {
-                versionIdd = null;
-            }else {
-                versionId = new ObjectId(versionIdd);
-            }
-
-//            isObjectExist = ObjectHandler.isExistObject(bucketName,objectKey,versionId);
-//            if(isObjectExist == false) {
-////                return;
-//                throw new NoSuchKeyException(objectKey, callContext.getRequestId());
-//            }
-
-        //防止链上有bucket，本地没有，下载文件之前提前创建，目的是从链上拿到的文件先放至缓存中
-//        Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
-//        Path metaBucket = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
-//        if (!Files.exists(dataBucket)){
-//            try {
-//                Files.createDirectories(dataBucket);
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//        }
-//        if(!Files.exists((metaBucket))) {
-//            try {
-//                Files.createDirectories(metaBucket);
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//        }
+        String versionIdd = callContext.getParams().getAllParams().get("versionId");
+        if(null == versionIdd || "".equals(versionIdd)) {
+            versionIdd = null;
+        }else {
+            versionId = new ObjectId(versionIdd);
+        }
         DownloadObject obj= null;
         try {
             obj = new DownloadObject(bucketName, objectKey,versionId);
+            BackupCaller caller=new BackupCaller(){
+                @Override
+                public byte[] getAESKey() {
+                    return UserConfig.AESKey;
+                }
+
+                @Override
+                public InputStream getBackupInputStream(long start) throws IOException {
+                    LOG.info("Switch download path,COS starting position :"+start);
+                    COSClient client = CosBackupService.getClient();
+                    int userID = UserConfig.userId;
+                    int mod = userID%180;
+                    String cosBucketName = "yotta" + mod + "-" + 1258989317;
+                    String fileName = userID + "_" + bucketName+"_"+ objectKey;
+                    GetObjectRequest getObjectRequest = new GetObjectRequest(cosBucketName,fileName);
+                    COSObject cosObject = client.getObject(getObjectRequest);
+                    getObjectRequest.setRange(start,cosObject.getObjectMetadata().getContentLength());
+                    cosObject = client.getObject(getObjectRequest);
+                    COSObjectInputStream cosObjectInputStream = cosObject.getObjectContent();
+                    return cosObjectInputStream;
+                }
+            };
+
+            obj.setBackupCaller(caller);
         } catch (ServiceException e) {
             if(obj != null) {
                 LOG.info("ERR:",e);
@@ -1367,17 +1404,30 @@ public class RepositoryImpl implements S3Repository {
             is = obj.load(start,end);
         }
         try {
+//            FileMetaMsg fileMeta = ObjectHandler.getFileMeta(bucketName,objectKey);
+//
+//            byte[] meta = fileMeta.getMeta();
+//            Map<String, String> map = SerializationUtil.deserializeMap(meta);
+//            LOG.info("map size:"+map.size());
+//            LOG.info(map);
             S3ResponseHeader header = new S3ResponseHeaderImpl();
+//            header.setEtag(map.get("ETag"));
+//            Date lastModified = new Date(map.get("x-amz-meta-s3b-last-modified"));
+//            header.setLastModified(lastModified);
             header.setContentLength(obj.getLength());
-            header.setContentType("application/octetstream");
+//            header.setContentType(map.get("content-type"));
             callContext.setResponseHeader(header);
-            callContext.setContent(is);
-            LOG.info("Download [" + objectKey + "] is Success..." );
-//            if (!head)
-//                callContext.setContent(is);
+            LOG.info(head);
+//            callContext.setContent(is);
+
+            if (!head){
+                callContext.setContent(is);
+                LOG.info("Download [" + objectKey + "] is Success..." );
+            }
         } catch (Exception e) {
-            LOG.error("internal error", e);
+//            LOG.error("internal error", e);
             e.printStackTrace();
+//            this.downloadForCos(callContext,bucketName,objectKey,head);
         }
 
     }
@@ -1423,8 +1473,11 @@ public class RepositoryImpl implements S3Repository {
     @Override
     public S3ListBucketResult listBucket(S3CallContext callContext, String bucketName) {
         Integer maxKeys = callContext.getParams().getMaxKeys();
-//        Integer maxKeys = 100;
+        String start_after = callContext.getParams().getAllParams().get("start-after");
         String marker = callContext.getParams().getMarker();
+        if(marker==null && start_after != null) {
+            marker = start_after;
+        }
         String prefix = callContext.getParams().getPrefix() != null ? callContext.getParams().getPrefix() : "";
         String delimiter = callContext.getParams().getDelimiter();
         boolean isVersion = callContext.getParams().listVersions();

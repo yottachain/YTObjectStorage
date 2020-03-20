@@ -1,5 +1,6 @@
 package com.s3.user.controller;
 
+import com.qcloud.cos.COSClient;
 import com.s3.user.controller.sync.task.AyncUploadSenderPool;
 import com.s3.user.controller.sync.task.SyncNotice;
 import com.ytfs.client.ClientInitor;
@@ -17,7 +18,6 @@ import io.jafka.jeos.util.KeyUtil;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.apache.log4j.Logger;
-//import org.bson.types.ObjectId;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -42,6 +42,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+
+import static de.mindconsulting.s3storeboot.service.CosBackupService.getClient;
 
 @RestController
 @RequestMapping(value="/user")
@@ -69,6 +71,12 @@ public class UserController {
     String setUploadFileMaxMemory;
     @Value("${s3server.uploadBlockThreadNum}")
     String uploadBlockThreadNum;
+
+//    @Value("${s3server.secretId}")
+//    String secretId;
+//
+//    @Value("${s3server.secretKey}")
+//    String secretKey;
 
 
     @RequestMapping(value = "/getUserStat",method = RequestMethod.GET)
@@ -168,7 +176,7 @@ public class UserController {
         File file = new File(path+"/"+fileName);
         byte[] data = AESUtil.getBytesFromFile(file);
 //        getDecryptFile(data,path,"new_"+fileName);
-        AESUtil.getDecryptFile(data,path,"new_" + fileName);
+        AESUtil.getDecryptFile(data,path,"ladon-s3-server.rar");
     }
 
 //    public static byte[] getBytesFromFile(File file) throws Exception {
@@ -396,7 +404,7 @@ public class UserController {
     @RequestMapping(value = "/get_version",method = RequestMethod.GET)
     @ResponseBody
     public String getVersion(HttpServletRequest request, HttpServletResponse response) {
-        String version_info = "{\"version\":\"1.0.0.8\",\"Date\":\"2020-02-17\"}";
+        String version_info = "{\"version\":\"1.0.0.11\",\"Date\":\"2020-03-19\"}";
         response.setHeader("Access-Control-Allow-Origin","*");
         return version_info;
     }
@@ -404,7 +412,7 @@ public class UserController {
     @RequestMapping(value = "/get_progress",method = RequestMethod.GET)
     @ResponseBody
     public int getProgress(HttpServletRequest request, HttpServletResponse response) {
-            response.setHeader("Access-Control-Allow-Origin","*");
+        response.setHeader("Access-Control-Allow-Origin","*");
 
         String status = ProgressUtil.getUserHDDStatus();
         if("ERR".equals(status)) {
@@ -412,13 +420,6 @@ public class UserController {
         }
         String bucketName = request.getParameter("bucketName");
         String key = request.getParameter("key");
-//        LOG.info("key=="+Encoding.getEncoding(key));
-//        String newKey = null;
-//        try {
-//            newKey = new String(key.getBytes("ISO-8859-1"),"UTF-8");
-//        } catch (UnsupportedEncodingException e) {
-//            e.printStackTrace();
-//        }
         boolean isFileExist = false;
         try {
             isFileExist = ObjectHandler.isExistObject(bucketName,key,null);
@@ -429,7 +430,6 @@ public class UserController {
 
         String s = bucketName+"-"+key;
         String sha256Key = SHA256Util.getSHA256(s);
-//        LOG.info("sha256Key=======" + sha256Key);
         int num = 0;
         try {
             num = ProgressUtil.getProgress(sha256Key);
@@ -470,5 +470,59 @@ public class UserController {
         Date date = new Date();
         String jsonStr = "{\"file_count\":" + "\"" + counts + "\"" + ",\"Date\":" + "\"" + date + "\"}";
         return jsonStr;
+    }
+
+
+    @RequestMapping(value = "/get_cosLicense",method = RequestMethod.GET)
+    @ResponseBody
+    public String get_license(HttpServletRequest request, HttpServletResponse response) {
+        response.setHeader("Access-Control-Allow-Origin","*");
+        String cos_key="5dc3383e69bd32ca72696e98d31d4c65a4b06c60f962bdf7239d50f2e58ec6c8";
+        String path = dirctory + "/" +"license.lic";
+        String secretId = request.getParameter("secretId");
+        String secretKey = request.getParameter("secretKey");
+        String appId=1258989317+"";
+        String combo_box = "{\"secretId\":" + "\"" + secretId + "\"" + ",\"secretKey\":" + "\"" + secretKey + "\""+",\"appId\":" + "\"" + appId+"\"}";
+        String aes = null;
+        try {
+            aes = de.mindconsulting.s3storeboot.util.AESCoder.encrypt(cos_key,combo_box);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        File file = new File(path);
+        byte[] data = aes.getBytes();
+
+        FileOutputStream out = null;
+        try {
+            out = new FileOutputStream(file);
+            out.write(data);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }finally {
+            try {
+                out.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return "COS CHANGE SUCCESS";
+    }
+
+
+    @RequestMapping(value = "/create_cos_bucket",method = RequestMethod.POST)
+    @ResponseBody
+    public void createCosBucket(HttpServletRequest request, HttpServletResponse response){
+        response.setHeader("Access-Control-Allow-Origin","*");
+        String appId = request.getParameter("appId");
+        COSClient cosClient = getClient();
+        for(int i=0;i<180;i++) {
+            if(i>71) {
+                String bucketName="yotta"+i+"-"+appId;
+                cosClient.createBucket(bucketName);
+                LOG.info("第 "+i+" 个bucket");
+                LOG.info("CREATE BUCKET SUCCESS:::"+bucketName);
+            }
+        }
     }
 }
