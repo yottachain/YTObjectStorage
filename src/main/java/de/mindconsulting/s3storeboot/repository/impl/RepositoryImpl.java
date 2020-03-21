@@ -1010,7 +1010,7 @@ public class RepositoryImpl implements S3Repository {
 
         String tempFileName = UUID.randomUUID().toString();
 
-        String filePath = repoBaseUrl+ "/" + bucketName + "/" +"data"+"/"+ objectKey;
+        String filePath = repoBaseUrl+ "/" + bucketName + "/" +"data"+"/"+ tempFileName;
         String filePathXML = repoBaseUrl+ "/" + bucketName + "/"+"data"+"/" + tempFileName+".xml";
         String cosXML = "";
         if("on".equals(status_sync)) {
@@ -1027,7 +1027,7 @@ public class RepositoryImpl implements S3Repository {
             }
         }
         //腾讯云备份*************
-        String aesFilePath = repoBaseUrl+ "/" + bucketName + "/" +"data"+"/" + "cos_"+objectKey;
+        String aesFilePath = repoBaseUrl+ "/" + bucketName + "/" +"data"+"/" + "cos_"+tempFileName;
         AESCoder coder = null;
         try {
             coder = new AESCoder(Cipher.ENCRYPT_MODE);
