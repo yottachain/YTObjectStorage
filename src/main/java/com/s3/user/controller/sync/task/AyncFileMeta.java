@@ -1,5 +1,7 @@
 package com.s3.user.controller.sync.task;
 
+import de.mc.ladon.s3server.entities.api.S3CallContext;
+
 import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlRootElement;
 
@@ -12,9 +14,21 @@ public class AyncFileMeta {
     private String path;
     private String aesPath;
     private String cosBucket;
+    private String publicKey;
+
+
+    @XmlElement(name = "publicKey")
+    public String getPublicKey() {
+        return publicKey;
+    }
+
+    public void setPublicKey(String publicKey) {
+        this.publicKey = publicKey;
+    }
 
     /**
      * @return the key
+
      */
     @XmlElement(name = "key")
     public String getKey() {

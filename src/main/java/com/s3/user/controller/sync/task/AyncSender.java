@@ -2,10 +2,13 @@ package com.s3.user.controller.sync.task;
 
 import com.ytfs.client.UploadObject;
 import com.ytfs.client.s3.ObjectHandler;
+import com.ytfs.client.v2.YTClient;
+import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.SerializationUtil;
 import com.ytfs.common.ServiceException;
 import de.mindconsulting.s3storeboot.service.CosBackupService;
 import de.mindconsulting.s3storeboot.util.ProgressUtil;
+import de.mindconsulting.s3storeboot.util.PropertiesUtil;
 import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
 
@@ -70,6 +73,9 @@ public class AyncSender extends Thread {
 
                 header = SerializationUtil.deserializeMap(bs);
                 String fileLength = header.get("contentLength");
+                PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
+                String loggingEnable = p.readProperty("s3server.loggingEnabled");
+                String new_publicKey = null;
 //                LOG.info("cos is "+"cos".equals(req.getPath()) + "!!!!!!");
                 try {
                     if("cos".equals(req.getPath())) {
@@ -80,7 +86,7 @@ public class AyncSender extends Thread {
                         if(Files.exists(Paths.get(cosPath))) {
                             LOG.info("COS BACK UP INTG.......");
                             CosBackupService cosBackupService = new CosBackupService();
-                            String etag = cosBackupService.uploadFile(req.getAesPath(),req.getBucketname(),req.getKey());
+                            String etag = cosBackupService.uploadFile(req);
                             LOG.info("BACKUP COMPLETE  etag==="+etag);
                             LOG.info("Delete ******* CACHE FILE.....1......");
                             Path aesPath = Paths.get(req.getAesPath());
@@ -97,7 +103,15 @@ public class AyncSender extends Thread {
                         if("0".equals(fileLength)) {
 //                            LOG.info("FILE is length===="+fileLength+",HERE...........11111.........");
                             ObjectId VNU = new ObjectId("000000000000000000000000");
-                            ObjectHandler.createObject(req.getBucketname(), req.getKey(), VNU, bs);
+                           if(loggingEnable.equals("true")){
+                               String publicKey = req.getPublicKey();
+                               new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                               YTClient client = YTClientMgr.getClient(new_publicKey);
+                               client.createObjectAccessor().createObject(req.getBucketname(), req.getKey(), VNU, bs);
+                           } else {
+                               ObjectHandler.createObject(req.getBucketname(), req.getKey(), VNU, bs);
+                           }
+
                             Path obj = Paths.get(req.getPath());
                             String xmlMeta = header.get("xmlMeta");
                             Path xml = Paths.get(xmlMeta);
@@ -115,8 +129,14 @@ public class AyncSender extends Thread {
                             uploadObject = new UploadObject(req.getPath());
                             ProgressUtil.putUploadObject(req.getBucketname(),req.getKey(),uploadObject);
                             uploadObject.upload();
-
-                            ObjectHandler.createObject(req.getBucketname(), req.getKey(), uploadObject.getVNU(), bs);
+                            if(loggingEnable.equals("true")) {
+                                String publicKey = req.getPublicKey();
+                                new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                                YTClient client = YTClientMgr.getClient(new_publicKey);
+                                client.createObjectAccessor().createObject(req.getBucketname(), req.getKey(), uploadObject.getVNU(), bs);
+                            } else {
+                                ObjectHandler.createObject(req.getBucketname(), req.getKey(), uploadObject.getVNU(), bs);
+                            }
                             int num = uploadObject.getProgress();
                             if(num == 100) {
                                 Path obj = Paths.get(req.getPath());
@@ -138,9 +158,6 @@ public class AyncSender extends Thread {
                             if("ERR".equals(status)) {
                                 ProgressUtil.removeUserHDDStatus();
                             }
-
-                            //
-//                            LOG.info("cos status is "+AyncUploadSenderPool.newInstance().cosBackUp);
                             if("on".equals(AyncUploadSenderPool.newInstance().cosBackUp)) {
                                 req.setPath("cos");
                                 AyncUploadSenderPool.putAyncFileMeta(req);
@@ -170,39 +187,9 @@ public class AyncSender extends Thread {
                     }
 
                 }finally {
-//                    try {
-//                        Thread.sleep(60000);
-//                    } catch (InterruptedException e) {
-//                        e.printStackTrace();
-//                    }
                     ProgressUtil.removeUploadObject(req.getBucketname(),req.getKey());
                 }
-
-//                LOG.info(req.getKey() + " uploaded successfully................");
-//                //Back up to tencent cloud
-//                LOG.info("req.getAesPath()===="+req.getAesPath()+"  ,buckerName=="+req.getBucketname() + " ,key===="+req.getKey());
-//
-//                CosBackupService cosBackupService = new CosBackupService();
-//                String etag = cosBackupService.uploadFile(req.getAesPath(),req.getBucketname(),req.getKey(),req.getCosBucket());
-//                LOG.info("BACKUP COMPLETE，etag:::"+etag);
-//                //Delete Cache file
-//                LOG.info("Delete ******* CACHE FILE...........");
-//
-
-
-
-                //腾讯云备份*******************
-//                Path aesPath = Paths.get(req.getAesPath());
-                //腾讯云备份****************************
                     AyncUploadSenderPool.notice(req);
-
-
-//                    Files.delete(obj);
-
-                    //腾讯云备份*******************
-//                    Files.delete(aesPath);
-                    //腾讯云备份*******************
-
             }
             req = null;
         }

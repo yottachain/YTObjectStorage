@@ -7,6 +7,8 @@ import com.ytfs.client.ClientInitor;
 import com.ytfs.client.Configurator;
 import com.ytfs.client.LocalInterface;
 import com.ytfs.client.s3.ObjectHandler;
+import com.ytfs.client.v2.YTClient;
+import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.ServiceException;
 import com.ytfs.common.codec.AESCoder;
 import com.ytfs.common.codec.KeyStoreCoder;
@@ -244,6 +246,22 @@ public class UserController {
 //        }
 //    }
 
+    @RequestMapping(value = "/addUser",method = RequestMethod.POST)
+    @ResponseBody
+    public Ret addUser(HttpServletRequest request,HttpServletResponse response) {
+        response.setHeader("Access-Control-Allow-Origin","*");
+        String privateKey = request.getParameter("privateKey");
+        String username = request.getParameter("username");
+        String publicKey = KeyUtil.toPublicKey(privateKey).replace("EOS", "YTA");
+        try {
+            LOG.info("publicKey===="+publicKey);
+            YTClient client = YTClientMgr.newInstance(username,privateKey);
+            return Ret.ok();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return Ret.error();
+        }
+    }
 
     @RequestMapping(value = "/register",method = RequestMethod.POST)
     @ResponseBody
@@ -524,5 +542,13 @@ public class UserController {
                 LOG.info("CREATE BUCKET SUCCESS:::"+bucketName);
             }
         }
+    }
+    @RequestMapping(value = "/get_userInfo",method = RequestMethod.GET)
+    @ResponseBody
+    public void getUserInfo(){
+        int userID = UserConfig.userId;
+        String privateKey = UserConfig.privateKey;
+        String username = UserConfig.username;
+       LOG.info("userID : "+userID+" ,username : "+ username + " ,privateKey : "+ privateKey);
     }
 }

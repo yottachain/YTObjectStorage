@@ -3,6 +3,8 @@ package de.mindconsulting.s3storeboot.config;
 import com.s3.user.controller.sync.task.AyncUploadSenderPool;
 import com.ytfs.client.ClientInitor;
 import com.ytfs.client.Configurator;
+import com.ytfs.client.v2.YTClient;
+import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.codec.AESCoder;
 import com.ytfs.common.codec.KeyStoreCoder;
 import com.ytfs.common.conf.UserConfig;
@@ -51,8 +53,8 @@ public class BeanConfig {
     String superNodeNum;
     @Value("${s3server.port}")
     String s3port;
-    @Value("${s3server.s3store.accessKey}")
-    String accessKey;
+//    @Value("${s3server.s3store.accessKey}")
+//    String accessKey;
     @Value("${s3server.allowMaxSize}")
     int allowMaxSize;
     @Value("${s3server.url}")
@@ -90,7 +92,9 @@ public class BeanConfig {
     @Value("${s3server.cosBackUp}")
     String cosBackUp;
     @Value("${s3server.uploadFileMaxMemory}")
-    String setUploadFileMaxMemory;
+    String uploadFileMaxMemory;
+    @Value("${s3server.isOpenUsers}")
+    String isOpenUsers;
 
     private static final Logger LOG = Logger.getLogger(BeanConfig.class);
 
@@ -98,25 +102,41 @@ public class BeanConfig {
     @Bean
     S3Repository s3Repository() {
 
-        return new RepositoryImpl(fsRepoRoot,accessKey,allowMaxSize,status_sync,syncBucketName,syncCount,cosBucket,"on");
+        return new RepositoryImpl(fsRepoRoot,allowMaxSize,status_sync,syncBucketName,syncCount,cosBucket,cosBackUp,isOpenUsers);
     }
 
     @Bean
     ServletRegistrationBean s3Registration(S3ServletConfiguration config, S3Repository repository) throws IOException {
-        String cert_path = dirctory + "/"+"yts3.conf";
-        LOG.info("cert_path===="+cert_path);
+        if(isOpenUsers.equals("true")) {
+            Configurator cfg=new Configurator();
+            //矿机列表长度(328-1000)
+            cfg.setPNN(PNN);
+            //每N分钟更新一次矿机列表(2-10分钟)
+            cfg.setPTR(PTR);
+            //上传文件时最大分片并发数(50-3000)
+            cfg.setUploadShardThreadNum(uploadShardThreadNum);
+            //上传文件时最大块并发数(3-500)
+            cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
+            //上传文件时没文件最大占用5M内存(3-20)
+            cfg. setUploadFileMaxMemory(uploadFileMaxMemory);
+            //下载文件时最大分片并发数(50-500)
+            cfg. setDownloadThread (downloadThread);
+            YTClientMgr.init(cfg);
+        }else {
+            String cert_path = dirctory + "/"+"yts3.conf";
+            LOG.info("cert_path===="+cert_path);
 
-        String cert = readCert(cert_path);
+            String cert = readCert(cert_path);
 
-        if(!"".equals(cert)) {
-            JSONObject jsonStr = JSONObject.fromObject(cert);
+            if(!"".equals(cert)) {
+                JSONObject jsonStr = JSONObject.fromObject(cert);
 
-            String KUSp = jsonStr.getString("privateKey");
-            String username = jsonStr.getString("username");
-            init(KUSp,username);
+                String KUSp = jsonStr.getString("privateKey");
+                String username = jsonStr.getString("username");
+                init(KUSp,username);
+            }
         }
-
-        AyncUploadSenderPool.init(fsRepoRoot,queueSize,syncCount,"on");
+        AyncUploadSenderPool.init(fsRepoRoot,queueSize,syncCount,cosBackUp);
         ServletRegistrationBean bean = new ServletRegistrationBean();
         bean.setName("s3servlet");
         bean.setAsyncSupported(true);
@@ -182,7 +202,7 @@ public class BeanConfig {
         cfg.setUploadShardThreadNum(uploadShardThreadNum);
         cfg.setDownloadThread(downloadThread);
         cfg.setUploadBlockThreadNum(uploadBlockThreadNum);
-        cfg.setUploadFileMaxMemory(setUploadFileMaxMemory);
+        cfg.setUploadFileMaxMemory(uploadFileMaxMemory);
         cfg.setPNN(PNN);
         cfg.setPTR(PTR);
         cfg.setRETRYTIMES(RETRYTIMES);
