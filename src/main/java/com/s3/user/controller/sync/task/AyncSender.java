@@ -74,7 +74,7 @@ public class AyncSender extends Thread {
                 header = SerializationUtil.deserializeMap(bs);
                 String fileLength = header.get("contentLength");
                 PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
-                String loggingEnable = p.readProperty("s3server.loggingEnabled");
+                String securityEnabled = p.readProperty("s3server.securityEnabled");
                 String new_publicKey = null;
 //                LOG.info("cos is "+"cos".equals(req.getPath()) + "!!!!!!");
                 try {
@@ -103,7 +103,7 @@ public class AyncSender extends Thread {
                         if("0".equals(fileLength)) {
 //                            LOG.info("FILE is length===="+fileLength+",HERE...........11111.........");
                             ObjectId VNU = new ObjectId("000000000000000000000000");
-                           if(loggingEnable.equals("true")){
+                           if(securityEnabled.equals("true")){
                                String publicKey = req.getPublicKey();
                                new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
                                YTClient client = YTClientMgr.getClient(new_publicKey);
@@ -129,7 +129,7 @@ public class AyncSender extends Thread {
                             uploadObject = new UploadObject(req.getPath());
                             ProgressUtil.putUploadObject(req.getBucketname(),req.getKey(),uploadObject);
                             uploadObject.upload();
-                            if(loggingEnable.equals("true")) {
+                            if(securityEnabled.equals("true")) {
                                 String publicKey = req.getPublicKey();
                                 new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
                                 YTClient client = YTClientMgr.getClient(new_publicKey);

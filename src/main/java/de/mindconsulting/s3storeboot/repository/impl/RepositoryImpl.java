@@ -38,7 +38,6 @@ import de.mindconsulting.s3storeboot.util.PropertiesUtil;
 import de.mindconsulting.s3storeboot.util.S3Lock;
 import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.w3c.dom.Document;
 
 import javax.crypto.Cipher;
@@ -77,7 +76,6 @@ public class RepositoryImpl implements S3Repository {
     private final JAXBContext jaxbContext;
     private final ConcurrentMap<String, S3User> userMap;
     public static final Predicate<Path> IS_DIRECTORY = p -> Files.isDirectory(p);
-//    public final String accessKey;
     private final int allowMaxSize;
     private final String defaultVNU = "000000000000000000000000";
     private final String status_sync;
@@ -85,10 +83,10 @@ public class RepositoryImpl implements S3Repository {
     private final int sync_count;
     private final String cosBucket;
     private final String cosBackUp;
-    private final String isOpenUsers;
+    private final String securityEnabled;
 
 
-    public RepositoryImpl(String repoBaseUrl,int allowMaxSize,String status_sync,String syncBucketName,int sync_count,String cosBucket,String cosBuckUp,String isOpenUsers) {
+    public RepositoryImpl(String repoBaseUrl,int allowMaxSize,String status_sync,String syncBucketName,int sync_count,String cosBucket,String cosBuckUp,String securityEnabled) {
         this.repoBaseUrl = repoBaseUrl;
         this.allowMaxSize = allowMaxSize;
         this.status_sync = status_sync;
@@ -96,7 +94,7 @@ public class RepositoryImpl implements S3Repository {
         this.sync_count=sync_count;
         this.cosBucket = cosBucket;
         this.cosBackUp = cosBuckUp;
-        this.isOpenUsers = isOpenUsers;
+        this.securityEnabled = securityEnabled;
         try {
             jaxbContext = JAXBContext.newInstance(StorageMeta.class, UserData.class,AyncFileMeta.class);
             userMap = new ConcurrentHashMap<>(loadUserFile());
@@ -131,7 +129,7 @@ public class RepositoryImpl implements S3Repository {
         try (OutputStream out = Files.newOutputStream(userFile)) {
             Marshaller m = jaxbContext.createMarshaller();
             m.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
-//            m.marshal(new UserData(ImmutableMap.of(accessKey, new S3StoreUser(accessKey, accessKey, accessKey, accessKey, null))), out);
+            m.marshal(new UserData(ImmutableMap.of(SYSTEM_DEFAULT_USER, new S3StoreUser(SYSTEM_DEFAULT_USER, SYSTEM_DEFAULT_USER, SYSTEM_DEFAULT_USER, SYSTEM_DEFAULT_USER, null))), out);
 
         }
 
@@ -145,8 +143,8 @@ public class RepositoryImpl implements S3Repository {
         String[] buckets = null;
         try {
             PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
-            String loggingEnable = p.readProperty("s3server.loggingEnabled");
-            if(loggingEnable.equals("true")) {
+            String securityEnabled = p.readProperty("s3server.securityEnabled");
+            if(securityEnabled.equals("true")) {
                 String publicKey = callContext.getUser().getPublicKey();
                 String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
                 YTClient client = YTClientMgr.getClient(new_publicKey);
@@ -174,7 +172,7 @@ public class RepositoryImpl implements S3Repository {
     @Override
     public void createBucket(S3CallContext callContext, String bucketName, String locationConstraint) {
         PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
-        String loggingEnable = p.readProperty("s3server.loggingEnabled");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
 
         Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
         Path metaBucket = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
@@ -194,7 +192,7 @@ public class RepositoryImpl implements S3Repository {
             byte[] new_byte = SerializationUtil.serializeMap(header);
 
 
-            if(loggingEnable.equals(true)) {
+            if(securityEnabled.equals(true)) {
                 String publicKey = callContext.getUser().getPublicKey();
                 String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
                 YTClient ytClient = YTClientMgr.getClient(new_publicKey);
@@ -412,9 +410,9 @@ public class RepositoryImpl implements S3Repository {
         //3、调用删除接口
 
         PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
-        String loggingEnable = p.readProperty("s3server.loggingEnabled");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
         try {
-            if(isExistBucket&&loggingEnable.equals("true")) {
+            if(isExistBucket&&securityEnabled.equals("true")) {
                 String publicKey = callContext.getUser().getPublicKey();
                 String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
                 YTClient client = YTClientMgr.getClient(new_publicKey);
@@ -434,9 +432,9 @@ public class RepositoryImpl implements S3Repository {
         String publicKey = null;
         boolean isBucketExist = this.checkBucketExist(callContext,bucketName);
         PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
-        String loggingEnable = p.readProperty("s3server.loggingEnabled");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
 
-        if(loggingEnable.equals("true")) {
+        if(securityEnabled.equals("true")) {
             publicKey = callContext.getUser().getPublicKey().substring(callContext.getUser().getPublicKey().indexOf("YTA")+3);
         }
         byte[] metaByte = new byte[0];
@@ -452,7 +450,7 @@ public class RepositoryImpl implements S3Repository {
 
             try {
 
-                if(loggingEnable.equals("true")) {
+                if(securityEnabled.equals("true")) {
                     YTClient client = YTClientMgr.getClient(publicKey);
                     client.createBucketAccessor().createBucket(bucketName,new_byte);
                 } else {
@@ -561,7 +559,7 @@ public class RepositoryImpl implements S3Repository {
                     boolean isFileExist = false;
                     try {
 //                    ObjectId versinoId = new ObjectId(callContext.getParams().getAllParams().get("versionId"));
-                        if(loggingEnable.equals("true")) {
+                        if(securityEnabled.equals("true")) {
                             YTClient client = YTClientMgr.getClient(publicKey);
                             isFileExist = client.createObjectAccessor().isExistObject(bucketName,objectKey,null);
                         } else {
@@ -579,7 +577,7 @@ public class RepositoryImpl implements S3Repository {
                     if(isFileExist == false && contentLength == 0) {
                         try {
                             ObjectId VNU = new ObjectId(defaultVNU);
-                            if(loggingEnable.equals("true")) {
+                            if(securityEnabled.equals("true")) {
                                 YTClient client = YTClientMgr.getClient(publicKey);
                                 client.createObjectAccessor().createObject(bucketName, objectKey, VNU, metaByte);
                             } else {
@@ -600,7 +598,7 @@ public class RepositoryImpl implements S3Repository {
 
                         try {
                             uploadObject.upload();
-                            if(loggingEnable.equals(true)) {
+                            if(securityEnabled.equals(true)) {
                                 YTClient client = YTClientMgr.getClient(publicKey);
                                 client.createObjectAccessor().createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
                             }else {
@@ -647,7 +645,7 @@ public class RepositoryImpl implements S3Repository {
                         //判断当前bucket是否开启了版本控制，根据版本控制状态决定是否允许上传同名文件
                         Map<String,byte[]> map = null;
                         try {
-                            if(loggingEnable.equals("true")) {
+                            if(securityEnabled.equals("true")) {
                                 YTClient client = YTClientMgr.getClient(publicKey);
                                 map = client.createBucketAccessor().getBucketByName(bucketName);
                             } else {
@@ -671,7 +669,7 @@ public class RepositoryImpl implements S3Repository {
                             //同名文件生成历史版本
                             try {
                                 if(contentLength == 0) {
-                                    if(loggingEnable.equals("true")) {
+                                    if(securityEnabled.equals("true")) {
                                         YTClient client = YTClientMgr.getClient(publicKey);
                                         client.createObjectAccessor().createObject(bucketName, objectKey, new ObjectId(defaultVNU), metaByte);
                                     } else {
@@ -680,7 +678,7 @@ public class RepositoryImpl implements S3Repository {
                                     LOG.info("[ "+objectKey +" ]"+ " uploaded successfully................");
                                 } else {
                                     uploadObject.upload();
-                                    if(loggingEnable.equals("true")){
+                                    if(securityEnabled.equals("true")){
                                         YTClient client = YTClientMgr.getClient(publicKey);
                                         client.createObjectAccessor().createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
                                     } else {
@@ -742,7 +740,7 @@ public class RepositoryImpl implements S3Repository {
     private void ayncFileUpload(S3CallContext callContext, String bucketName, String objectKey) {
         Path syncPath = Paths.get(repoBaseUrl+"/"+bucketName);
         PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
-        String loggingEnable = p.readProperty("s3server.loggingEnabled");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
         if (!Files.exists(syncPath)) {
             try {
                 Files.createDirectories(syncPath);
@@ -813,7 +811,7 @@ public class RepositoryImpl implements S3Repository {
             AyncFileMeta fileMeta = new AyncFileMeta();
             fileMeta.setKey(objectKey);
             fileMeta.setPath(filePath.toString());
-            if(loggingEnable.equals("true")) {
+            if(securityEnabled.equals("true")) {
                 fileMeta.setPublicKey(callContext.getUser().getPublicKey());
             }
             //腾讯云备份*************
@@ -1400,10 +1398,10 @@ public class RepositoryImpl implements S3Repository {
     private boolean checkBucketExist(S3CallContext callContext,String bucketName){
         boolean flag = false;
         PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
-        String loggingEnable = p.readProperty("s3server.loggingEnabled");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
         String[] buckets = null;
         try {
-            if(loggingEnable.equals("true")) {
+            if(securityEnabled.equals("true")) {
                 String publicKey  = callContext.getUser().getPublicKey();
                 String new_publiceKey = publicKey.substring(publicKey.indexOf("YTA")+3);
                 YTClient client = YTClientMgr.getClient(new_publiceKey);
@@ -1603,9 +1601,9 @@ public class RepositoryImpl implements S3Repository {
         List<S3Object> s3Objects = new ArrayList<>();
         List<FileMetaMsg> fileMetaMsgs = new ArrayList<>();
         PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
-        String loggingEnable = p.readProperty("s3server.loggingEnabled");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
         try {
-            if(loggingEnable.equals("true")){
+            if(securityEnabled.equals("true")){
                 String publicKey = callContext.getUser().getPublicKey();
                 String newPublicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
                 YTClient client = YTClientMgr.getClient(newPublicKey);
@@ -1749,6 +1747,9 @@ public class RepositoryImpl implements S3Repository {
         S3User user = callContext.getUser();
         String publicKey = user.getPublicKey().substring(user.getPublicKey().indexOf("YTA")+3);
         YTClient client = YTClientMgr.getClient(publicKey);
+        if(client == null) {
+            throw new CredentialsNotSupportedException(accessKey,callContext.getRequestId());
+        }
         String privateKey = client.getPrivateKey();
         if (user != null) {
 

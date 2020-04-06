@@ -15,6 +15,7 @@ import com.ytfs.common.codec.KeyStoreCoder;
 import com.ytfs.common.conf.UserConfig;
 import com.ytfs.service.packet.s3.entities.FileMetaMsg;
 import de.mindconsulting.s3storeboot.entities.Ret;
+import de.mindconsulting.s3storeboot.entities.YottaUser;
 import de.mindconsulting.s3storeboot.util.*;
 import io.jafka.jeos.util.KeyUtil;
 import net.sf.json.JSONArray;
@@ -252,10 +253,45 @@ public class UserController {
         response.setHeader("Access-Control-Allow-Origin","*");
         String privateKey = request.getParameter("privateKey");
         String username = request.getParameter("username");
-        String publicKey = KeyUtil.toPublicKey(privateKey).replace("EOS", "YTA");
+        String publicKey = null;
         try {
-            LOG.info("publicKey===="+publicKey);
-            YTClient client = YTClientMgr.newInstance(username,privateKey);
+            publicKey=KeyUtil.toPublicKey(privateKey).replace("EOS", "YTA");
+        }catch (Exception e) {
+            return Ret.error().setData("The private key is wrong 111...");
+        }
+
+        String jsonStr = "{\"public_key\":" + "\"" + publicKey + "\"}";
+        String result = null;
+        try {
+            result = HttpClientUtils.ocPost(eosHistoryUrl + "get_key_accounts", jsonStr);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Ret.error().setData("The private key is wrong 222...");
+        }
+
+        JSONObject json = JSONObject.fromObject(result);
+        JSONArray array = json.getJSONArray("account_names");
+        LOG.info("array size========" + array.size());
+        if(array.size() > 0) {
+            //判断用户输入的username是否正确  如果不正确 返回错误
+            if(!array.contains(username)) {
+                return Ret.error().setData("The username is wrong");
+            }
+        } else {
+            //返回错误  根据当前信息没有查到用户
+            return Ret.error().setData("The private key is wrong 333...");
+        }
+
+        //*****************用户校验完成**************************
+        List<YottaUser> list = new ArrayList<>();
+        YottaUser user = new YottaUser();
+        user.setUsername(username);
+        user.setPrivateKey(privateKey);
+        list.add(user);
+        YottaUser.save(list);
+
+        try {
+            YTClientMgr.newInstance(username,privateKey);
             return Ret.ok();
         } catch (IOException e) {
             e.printStackTrace();

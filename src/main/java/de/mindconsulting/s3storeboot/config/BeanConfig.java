@@ -93,8 +93,8 @@ public class BeanConfig {
     String cosBackUp;
     @Value("${s3server.uploadFileMaxMemory}")
     String uploadFileMaxMemory;
-    @Value("${s3server.isOpenUsers}")
-    String isOpenUsers;
+    @Value("${s3server.securityEnabled}")
+    String securityEnabled;
 
     private static final Logger LOG = Logger.getLogger(BeanConfig.class);
 
@@ -102,12 +102,12 @@ public class BeanConfig {
     @Bean
     S3Repository s3Repository() {
 
-        return new RepositoryImpl(fsRepoRoot,allowMaxSize,status_sync,syncBucketName,syncCount,cosBucket,cosBackUp,isOpenUsers);
+        return new RepositoryImpl(fsRepoRoot,allowMaxSize,status_sync,syncBucketName,syncCount,cosBucket,cosBackUp,securityEnabled);
     }
 
     @Bean
     ServletRegistrationBean s3Registration(S3ServletConfiguration config, S3Repository repository) throws IOException {
-        if(isOpenUsers.equals("true")) {
+        if(securityEnabled.equals("true")) {
             Configurator cfg=new Configurator();
             //矿机列表长度(328-1000)
             cfg.setPNN(PNN);
