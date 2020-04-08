@@ -84,7 +84,8 @@ public class RepositoryImpl implements S3Repository {
     private final String cosBucket;
     private final String cosBackUp;
     private final String securityEnabled;
-
+    public static byte[] securityAESKey;
+    public static int securityUserId;
 
     public RepositoryImpl(String repoBaseUrl,int allowMaxSize,String status_sync,String syncBucketName,int sync_count,String cosBucket,String cosBuckUp,String securityEnabled) {
         this.repoBaseUrl = repoBaseUrl;
@@ -155,7 +156,6 @@ public class RepositoryImpl implements S3Repository {
                  buckets = BucketHandler.listBucket();
             }
 
-            LOG.info("bucket count:::"+buckets.length);
             if (buckets.length > 0)
                 for (String bucket : buckets) {
                     S3BucketImpl s3Bucket = new S3BucketImpl(bucket, new Date(), callContext.getUser());
@@ -190,9 +190,7 @@ public class RepositoryImpl implements S3Repository {
             }
             header.put("etag",S3Constants.ETAG);
             byte[] new_byte = SerializationUtil.serializeMap(header);
-
-
-            if(securityEnabled.equals(true)) {
+            if(securityEnabled.equals("true")) {
                 String publicKey = callContext.getUser().getPublicKey();
                 String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
                 YTClient ytClient = YTClientMgr.getClient(new_publicKey);
@@ -487,12 +485,9 @@ public class RepositoryImpl implements S3Repository {
             String tempFileName = UUID.randomUUID().toString();
             //腾讯云备份*****************************
 
-
-
             //腾讯云备份*****************************
             Path meta = metaBucket.resolve(tempFileName + META_XML_EXTENSION);
             Path obj = dataBucket.resolve(tempFileName);
-
             Long contentLength = callContext.getHeader().getContentLength();
             lock(metaBucket, tempFileName, S3Lock.LockType.write, callContext);
             try (InputStream in = callContext.getContent()) {
@@ -502,34 +497,24 @@ public class RepositoryImpl implements S3Repository {
                 //腾讯云备份*****************************
                 OutputStream aes = null;
                 Path AESKyeObj=null;
-                if("on".equals(cosBackUp)){
+                if(!"false".equals(cosBackUp)){
                     String aesTmpObj = UUID.randomUUID().toString();
                     AESKyeObj = dataBucket.resolve(aesTmpObj);
                     LOG.info("AESKyeObj====="+AESKyeObj.toString());
                     Files.createFile(AESKyeObj);
                     aes = Files.newOutputStream(AESKyeObj);
                 }
-
-
-
                 //腾讯云备份*****************************
-
                 DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
-
                 try (OutputStream out = Files.newOutputStream(obj)) {
-
-                    //腾讯云备份*****************************
-//                    OutputStream
-                    //腾讯云备份*****************************
                     long bytesCopied = 0;
-
                     //腾讯云备份******************
                     try {
-                        bytesCopied = CosBackupService.copy(din,out,aes,cosBackUp);
+                        bytesCopied = CosBackupService.copy(callContext,din,out,aes,cosBackUp);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-                    if("on".equals(cosBackUp)){
+                    if(!"false".equals(cosBackUp)){
                         aes.flush();
                         aes.close();
                     }
@@ -572,8 +557,15 @@ public class RepositoryImpl implements S3Repository {
                     // 如果文件不存在  将文件上传至超级节点
                     String filePath = repoBaseUrl + "/" + bucketName+"/data/"+tempFileName;
                     LOG.info("filePath===="+filePath);
-                    UploadObject uploadObject = new UploadObject(filePath);
-                    ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
+                    UploadObject uploadObject;
+                    if(securityEnabled.equals("true")){
+                        YTClient client = YTClientMgr.getClient(publicKey);
+                        uploadObject = client.createUploadObject(filePath);
+                        ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
+                    }else {
+                        uploadObject = new UploadObject(filePath);
+                        ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
+                    }
                     if(isFileExist == false && contentLength == 0) {
                         try {
                             ObjectId VNU = new ObjectId(defaultVNU);
@@ -598,7 +590,7 @@ public class RepositoryImpl implements S3Repository {
 
                         try {
                             uploadObject.upload();
-                            if(securityEnabled.equals(true)) {
+                            if(securityEnabled.equals("true")) {
                                 YTClient client = YTClientMgr.getClient(publicKey);
                                 client.createObjectAccessor().createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
                             }else {
@@ -610,13 +602,16 @@ public class RepositoryImpl implements S3Repository {
 
                             //腾讯云备份*****************************
                             //备份到腾讯云
-                            if("on".equals(cosBackUp)) {
+                            if(!"false".equals(cosBackUp)) {
                                 LOG.info("SYNC UPLOAD,Start backup COS task..................");
                                 CosBackupService cosBackupService  = new CosBackupService();
                                 AyncFileMeta fileMeta = new AyncFileMeta();
                                 fileMeta.setBucketname(bucketName);
                                 fileMeta.setKey(objectKey);
                                 fileMeta.setAesPath(AESKyeObj.toString());
+                                if(securityEnabled.equals("true")){
+                                    fileMeta.setPublicKey(publicKey);
+                                }
                                 String etag = cosBackupService.uploadFile(fileMeta);
                                 LOG.info("etag coss====="+etag);
                                 LOG.info("SYNC UPLOAD,Complete backup COS task..................");
@@ -632,7 +627,7 @@ public class RepositoryImpl implements S3Repository {
                             //腾讯云备份*****************************
                         } catch (Exception e) {
                             LOG.info(objectKey + "  upload failed.222",e);
-                            if("on".equals(cosBackUp)) {
+                            if(!"false".equals(cosBackUp)) {
                                 if(Files.exists(AESKyeObj)) {
                                     Files.delete(AESKyeObj);
                                 }
@@ -755,7 +750,7 @@ public class RepositoryImpl implements S3Repository {
         OutputStream aes=null;
         Path aesFilePath = null;
         Path cosPathXML = null;
-        if("on".equals(cosBackUp)) {
+        if(!"false".equals(cosBackUp)) {
             String escFileName = UUID.randomUUID().toString();
             aesFilePath = Paths.get(repoBaseUrl+"/"+bucketName+"/"+escFileName);
             cosPathXML = Paths.get(repoBaseUrl + "/" + "cos_xml/" + tempFileName+".xml");
@@ -775,20 +770,12 @@ public class RepositoryImpl implements S3Repository {
         try (InputStream in = callContext.getContent()) {
             DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
             OutputStream out = Files.newOutputStream(filePath);
-//            long bytesCopied = ayncCopy(din, out,null);
+
             //腾讯云备份*************
-            long bytesCopied = CosBackupService.copy(din,out,aes,cosBackUp);
-//            long bytesCopied = ayncCopy(din, out,aes);
+            long bytesCopied = CosBackupService.copy(callContext,din,out,aes,cosBackUp);
             //腾讯云备份*************
 
             byte[] md5bytes = din.getMessageDigest().digest();
-//            String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
-//            String md5 = callContext.getHeader().getContentMD5();
-//            if (callContext.getHeader().getContentLength() != null && callContext.getHeader().getContentLength() != bytesCopied
-//                    || md5 != null && !md5.equals(storageMd5base64)) {
-//                Files.delete(filePath);
-//                throw new InvalidDigestException(objectKey, callContext.getRequestId());
-//            }
 
             String storageMd5base16 = Encoding.toHex(md5bytes);
 
@@ -801,7 +788,7 @@ public class RepositoryImpl implements S3Repository {
             in.close();
 
             //腾讯云备份*************
-            if("on".equals(cosBackUp)){
+            if(!"false".equals(cosBackUp)){
                 aes.close();
             }
 
@@ -812,10 +799,10 @@ public class RepositoryImpl implements S3Repository {
             fileMeta.setKey(objectKey);
             fileMeta.setPath(filePath.toString());
             if(securityEnabled.equals("true")) {
-                fileMeta.setPublicKey(callContext.getUser().getPublicKey());
+                fileMeta.setPublicKey(callContext.getUser().getPublicKey().substring(callContext.getUser().getPublicKey().indexOf("YTA")+3));
             }
             //腾讯云备份*************
-            if("on".equals(cosBackUp)) {
+            if(!"false".equals(cosBackUp)) {
                 fileMeta.setAesPath(aesFilePath.toString());
                 LOG.info("cos_bucket========"+cosBucket);
                 fileMeta.setCosBucket(cosBucket);
@@ -823,10 +810,9 @@ public class RepositoryImpl implements S3Repository {
 
             //腾讯云备份*************
 
-
             fileMeta.setBucketname(bucketName);
             byte[] meta = null;
-            if("on".equals(cosBackUp)) {
+            if(!"false".equals(cosBackUp)) {
                 meta = getMeta(filePath.toString(),filePathXML.toString(),cosPathXML.toString(),etag);
             } else {
                 meta = getMeta(filePath.toString(),filePathXML.toString(),null,etag);
@@ -853,7 +839,7 @@ public class RepositoryImpl implements S3Repository {
 
 
             //腾讯云备份*************
-            if("on".equals(cosBackUp)) {
+            if(!"false".equals(cosBackUp)) {
                 byte[] data1 = coder.update(buffer,0,bytesRead);
                 aes.write(data1);
             }
@@ -870,7 +856,7 @@ public class RepositoryImpl implements S3Repository {
         }
 
         //腾讯云备份*************
-        if("on".equals(cosBackUp)) {
+        if(!"false".equals(cosBackUp)) {
             byte[] data2 = coder.doFinal();
             aes.write(data2);
             aes.close();
@@ -927,7 +913,6 @@ public class RepositoryImpl implements S3Repository {
         }catch (IOException | JAXBException e) {
             LOG.info("err::",e);
         }
-//        out.flush();
     }
 
 
@@ -1108,7 +1093,7 @@ public class RepositoryImpl implements S3Repository {
             filePathXML = repoBaseUrl + "/" + "xml/" + tempFileName + ".xml";
             cosXML = repoBaseUrl + "/" + "cos_xml/" + tempFileName + ".xml";
             Path cosPath = Paths.get(cosXML);
-            if(!Files.exists(cosPath) && "on".equals(cosBackUp)) {
+            if(!Files.exists(cosPath) && !"false".equals(cosBackUp)) {
                 try {
                     Files.createDirectories(cosPath.getParent());
                     Files.createFile(cosPath);
@@ -1121,7 +1106,14 @@ public class RepositoryImpl implements S3Repository {
         String aesFilePath = repoBaseUrl+ "/" + bucketName + "/" +"data"+"/" + "cos_"+tempFileName;
         AESCoder coder = null;
         try {
-            coder = new AESCoder(Cipher.ENCRYPT_MODE);
+            if(securityEnabled.equals("true")){
+              String publicKey = callContext.getUser().getPublicKey().substring(callContext.getUser().getPublicKey().indexOf("YTA")+3);
+              YTClient client = YTClientMgr.getClient(publicKey);
+              coder = new AESCoder(Cipher.ENCRYPT_MODE,client.getAESKey());
+            }else {
+                coder = new AESCoder(Cipher.ENCRYPT_MODE);
+            }
+
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
         } catch (NoSuchPaddingException e) {
@@ -1141,7 +1133,7 @@ public class RepositoryImpl implements S3Repository {
             bos=new BufferedOutputStream(new FileOutputStream(filePath));
 
             //腾讯云备份*************
-            if("on".equals(cosBackUp)) {
+            if(!"false".equals(cosBackUp)) {
                 aes = new BufferedOutputStream(new FileOutputStream(aesFilePath));
             }
 
@@ -1156,7 +1148,7 @@ public class RepositoryImpl implements S3Repository {
                 while (-1!=(len=bis.read(bt))) {
 
                     //腾讯云备份*************
-                    if("on".equals(cosBackUp)){
+                    if(!"false".equals(cosBackUp)){
                         byte[] data1 = coder.update(bt,0,len);
                         aes.write(data1);
                     }
@@ -1176,7 +1168,7 @@ public class RepositoryImpl implements S3Repository {
             }
             bos.close();
 
-            if("on".equals(cosBackUp)){  //腾讯云备份*************
+            if(!"false".equals(cosBackUp)){  //腾讯云备份*************
                 byte[] data2 = coder.doFinal();
                 aes.write(data2);
 
@@ -1229,14 +1221,15 @@ public class RepositoryImpl implements S3Repository {
                 //腾讯云备份***************
                 fileMeta.setAesPath(aesFilePath);
                 fileMeta.setCosBucket(cosBucket);
+                if(securityEnabled.equals("true")){
+                    fileMeta.setPublicKey(callContext.getUser().getPublicKey().substring(callContext.getUser().getPublicKey().indexOf("YTA")+3));
+                }
                 //腾讯云备份
                 //将文件信息写入到本地xml中
                 writeAyncFileMeta(fileMeta,tempFileName,Paths.get(filePathXML));
-                if("on".equals(cosBackUp)){
+                if(!"false".equals(cosBackUp)){
                     writeAyncFileMeta(fileMeta,tempFileName,Paths.get(cosXML));
                 }
-
-
 
                 //将上传请求加入到队列
                 LOG.info("AYNC QUEuE.........................................");
@@ -1247,12 +1240,24 @@ public class RepositoryImpl implements S3Repository {
 
             }else {
                 try {
-                    UploadObject uploadObject = new UploadObject(filePath);
-                    ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
-                    uploadObject.upload();
-                    ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), newHeaderByte);
+                    if(securityEnabled.equals("true")){
+                        String publicKey = callContext.getUser().getPublicKey().substring(callContext.getUser().getPublicKey().indexOf("YTA")+3);
 
-                    LOG.info("[ "+objectKey+" ]" + "uploaded successfully................");
+                        YTClient client = YTClientMgr.getClient(publicKey);
+                        UploadObject uploadObject = client.createUploadObject(filePath);
+                        ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
+                        uploadObject.upload();
+                        client.createObjectAccessor().createObject(bucketName, objectKey, uploadObject.getVNU(), newHeaderByte);
+                        LOG.info("[ "+objectKey+" ]" + "uploaded successfully................");
+                    }else {
+                        UploadObject uploadObject = new UploadObject(filePath);
+                        ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
+                        uploadObject.upload();
+                        ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), newHeaderByte);
+
+                        LOG.info("[ "+objectKey+" ]" + "uploaded successfully................");
+
+                    }
 
                     //删除缓存文件
                     LOG.info("Delete ******* CACHE FILE...........");
@@ -1261,12 +1266,15 @@ public class RepositoryImpl implements S3Repository {
 
 
                     //备份到腾讯云*****************
-                    if("on".equals(cosBackUp)) {
+                    if(!"false".equals(cosBackUp)) {
                         CosBackupService cosBackupService = new CosBackupService();
                         AyncFileMeta fileMeta = new AyncFileMeta();
                         fileMeta.setKey(objectKey);
                         fileMeta.setAesPath(aesFilePath);
                         fileMeta.setBucketname(bucketName);
+                        if(securityEnabled.equals("true")) {
+                            fileMeta.setPublicKey(callContext.getUser().getPublicKey().substring(callContext.getUser().getPublicKey().indexOf("YTA")+3));
+                        }
                         String aesEtag = cosBackupService.uploadFile(fileMeta);
                         LOG.info("aesEtag:::"+aesEtag);
                     }
@@ -1453,18 +1461,35 @@ public class RepositoryImpl implements S3Repository {
         }
         DownloadObject obj= null;
         try {
-            obj = new DownloadObject(bucketName, objectKey,versionId);
+            if(securityEnabled.equals("true")){
+                String publicKey = callContext.getUser().getPublicKey();
+                String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                YTClient client = YTClientMgr.getClient(new_publicKey);
+                securityAESKey = client.getAESKey();
+                securityUserId = client.getUserId();
+                obj = client.createDownloadObject(bucketName, objectKey,versionId);
+            }else {
+                obj = new DownloadObject(bucketName, objectKey,versionId);
+            }
             BackupCaller caller=new BackupCaller(){
                 @Override
                 public byte[] getAESKey() {
-                    return UserConfig.AESKey;
+                    if(securityEnabled.equals("true")){
+                        return securityAESKey;
+                    }else {
+                        return UserConfig.AESKey;
+                    }
                 }
-
                 @Override
                 public InputStream getBackupInputStream(long start) throws IOException {
                     LOG.info("Switch download path,COS starting position :"+start);
                     COSClient client = CosBackupService.getClient();
-                    int userID = UserConfig.userId;
+                    int userID = 0;
+                    if(securityEnabled.equals("true")){
+                        userID = securityUserId;
+                    }else {
+                       userID = UserConfig.userId;
+                    }
                     int mod = userID%180;
                     String cosBucketName = "yotta" + mod + "-" + 1258989317;
                     String fileName = userID + "_" + bucketName+"_"+ objectKey;
@@ -1494,11 +1519,6 @@ public class RepositoryImpl implements S3Repository {
         }
 
         if(range == null && obj != null) {
-//            if(head == false) {
-//                is = obj.load();
-//                callContext.setContent(is);
-////                LOG.info("Download [" + objectKey + "] is Success..." );
-//            }
             is = obj.load();
         } else {
             String newRange = range.replace("bytes=","");
@@ -1699,6 +1719,7 @@ public class RepositoryImpl implements S3Repository {
     public void deleteObject(S3CallContext callContext, String bucketName, String objectKey) {
         String versionIdd = callContext.getParams().getAllParams().get("versionId");
         ObjectId versionId = new ObjectId(defaultVNU);
+        String new_publicKey = null;
         if(null == versionIdd || "".equals(versionIdd)) {
             versionId = null;
         } else {
@@ -1711,7 +1732,15 @@ public class RepositoryImpl implements S3Repository {
         }
         boolean isExistObject = false;
         try {
-            isExistObject = ObjectHandler.isExistObject(bucketName,objectKey,versionId);
+            if(securityEnabled.equals("true")){
+                String publicKey = callContext.getUser().getPublicKey();
+                new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                YTClient client = YTClientMgr.getClient(new_publicKey);
+                isExistObject = client.createObjectAccessor().isExistObject(bucketName,objectKey,versionId);
+            }else {
+                isExistObject = ObjectHandler.isExistObject(bucketName,objectKey,versionId);
+            }
+
         } catch (ServiceException e) {
             e.printStackTrace();
         }
@@ -1719,7 +1748,13 @@ public class RepositoryImpl implements S3Repository {
             throw new NoSuchKeyException(objectKey, callContext.getRequestId());
         }
         try {
-            ObjectHandler.deleteObject(bucketName,objectKey,versionId);
+            if(securityEnabled.equals("true")){
+                YTClient client = YTClientMgr.getClient(new_publicKey);
+                client.createObjectAccessor().deleteObject(bucketName,objectKey,versionId);
+            }else {
+                ObjectHandler.deleteObject(bucketName,objectKey,versionId);
+            }
+
         } catch (ServiceException e) {
             e.printStackTrace();
         }
@@ -1736,13 +1771,11 @@ public class RepositoryImpl implements S3Repository {
 
     @Override
     public S3User getUser(S3CallContext callContext, String accessKey) {
-        LOG.info("getuser()    accessKey======="+accessKey);
         return loadUser(callContext,accessKey);
 
     }
 
     private S3User loadUser(S3CallContext callContext, String accessKey) {
-        LOG.info("loadUser()    accessKey======="+accessKey);
 //        S3User user = userMap.get(accessKey);
         S3User user = callContext.getUser();
         String publicKey = user.getPublicKey().substring(user.getPublicKey().indexOf("YTA")+3);

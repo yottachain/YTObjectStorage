@@ -75,12 +75,6 @@ public class UserController {
     @Value("${s3server.uploadBlockThreadNum}")
     String uploadBlockThreadNum;
 
-//    @Value("${s3server.secretId}")
-//    String secretId;
-//
-//    @Value("${s3server.secretKey}")
-//    String secretKey;
-
 
     @RequestMapping(value = "/getUserStat",method = RequestMethod.GET)
     @ResponseBody
@@ -117,10 +111,7 @@ public class UserController {
         sn.waitComplete();
 
         return "SUCCESS";
-//        String[] objectList = new File(fsRepoRoot+"/"+syncBucketName).list();
-//
-//        String status = this.syncStatus(objectList);
-//        return status;
+
     }
     public String syncStatus(String[] objectList) {
 
@@ -182,72 +173,7 @@ public class UserController {
         AESUtil.getDecryptFile(data,path,"ladon-s3-server.rar");
     }
 
-//    public static byte[] getBytesFromFile(File file) throws Exception {
-//        InputStream is = new FileInputStream(file);
-//        // 获取文件大小
-//        long length = file.length();
-//        if (length > Integer.MAX_VALUE) {
-//            // 文件太大，无法读取
-//            throw new IOException("File is to large "+file.getName());
-//        }
-//        // 创建一个数据来保存文件数据
-//        byte[] bytes = new byte[(int)length];
-//        // 读取数据到byte数组中
-//        int offset = 0;
-//        int numRead = 0;
-//        while (offset < bytes.length && (numRead=is.read(bytes, offset, bytes.length-offset)) >= 0) {
-//            offset += numRead;
-//        }
-//        // 确保所有数据均被读取
-//        if (offset < bytes.length) {
-//            throw new IOException("Could not completely read file "+file.getName());
-//        }
-//        // Close the input stream and return bytes
-//        is.close();
-//        return bytes;
-//    }
-
-
-    /**
-     * 根据byte数组，生成解密文件
-     */
-//    public static void getDecryptFile(byte[] bfile, String filePath,String fileName) {
-//        BufferedOutputStream bos = null;  //新建一个输出流
-//        FileOutputStream fos = null;  //w文件包装输出流
-//        File file = null;
-//        try {
-//            File dir = new File(filePath);
-//            if(!dir.exists()&&dir.isDirectory()){//判断文件目录是否存在
-//                dir.mkdirs();
-//            }
-//            file = new File(filePath+"/"+fileName);  //新建一个file类
-//            fos = new FileOutputStream(file);
-//            bos = new BufferedOutputStream(fos);  //输出的byte文件
-//
-//            AESCoder coder = new AESCoder(Cipher.DECRYPT_MODE);
-//            byte[] data = coder.doFinal(bfile);
-//            bos.write(data);
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        } finally {
-//            if (bos != null) {
-//                try {
-//                    bos.close();  //关闭资源
-//                } catch (IOException e1) {
-//                    e1.printStackTrace();
-//                }
-//            }
-//            if (fos != null) {
-//                try {
-//                    fos.close();  //关闭资源
-//                } catch (IOException e1) {
-//                    e1.printStackTrace();
-//                }
-//            }
-//        }
-//    }
-
-    @RequestMapping(value = "/addUser",method = RequestMethod.POST)
+    @RequestMapping(value = "/insertUser",method = RequestMethod.POST)
     @ResponseBody
     public Ret addUser(HttpServletRequest request,HttpServletResponse response) {
         response.setHeader("Access-Control-Allow-Origin","*");
@@ -271,7 +197,6 @@ public class UserController {
 
         JSONObject json = JSONObject.fromObject(result);
         JSONArray array = json.getJSONArray("account_names");
-        LOG.info("array size========" + array.size());
         if(array.size() > 0) {
             //判断用户输入的username是否正确  如果不正确 返回错误
             if(!array.contains(username)) {
@@ -281,6 +206,7 @@ public class UserController {
             //返回错误  根据当前信息没有查到用户
             return Ret.error().setData("The private key is wrong 333...");
         }
+
 
         //*****************用户校验完成**************************
         List<YottaUser> list = new ArrayList<>();
@@ -325,11 +251,8 @@ public class UserController {
                 return Ret.error().setData("The private key is wrong 222...");
             }
 
-            LOG.info("result===="+result);
-
             JSONObject json = JSONObject.fromObject(result);
             JSONArray array = json.getJSONArray("account_names");
-            LOG.info("array size========" + array.size());
             if(array.size() > 0) {
                 //判断用户输入的username是否正确  如果不正确 返回错误
                 if(!array.contains(username)) {
@@ -385,19 +308,6 @@ public class UserController {
                     e.printStackTrace();
                 }
             }
-
-            //测试解密是否成功***************************************
-//        try {
-//            byte[] new_data = AESUtil.getBytesFromFile(file);
-//
-//            AESUtil.getDecryptFile(new_data,dirctory,file.getName()+".txt");
-//
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
-            //测试解密是否成功****************************************
-
-            //以上没问题  则初始化用户信息
             try {
                 this.init(privateKey,username);
             } catch (IOException e) {
@@ -450,15 +360,12 @@ public class UserController {
         PropertiesUtil p = new PropertiesUtil(path);
 
         p.writeProperty("SHA256_KEY",sha256_key);
-
-//        String SHA256_KEY = p.readProperty("SHA256_KEY");
-//        System.out.println("SHA256_KEY===============" + SHA256_KEY);
     }
 
     @RequestMapping(value = "/get_version",method = RequestMethod.GET)
     @ResponseBody
     public String getVersion(HttpServletRequest request, HttpServletResponse response) {
-        String version_info = "{\"version\":\"1.0.0.11\",\"Date\":\"2020-03-19\"}";
+        String version_info = "{\"version\":\"1.0.0.13\",\"Date\":\"2020-04-08\"}";
         response.setHeader("Access-Control-Allow-Origin","*");
         return version_info;
     }

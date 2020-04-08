@@ -94,14 +94,12 @@ public class AyncSender extends Thread {
                         }
 
                         String cosMeta = header.get("cosMeta");
-                        LOG.info("cosMeta======"+cosMeta);
                         Path xml = Paths.get(cosMeta);
                         if(Files.exists(xml)) {
                             Files.delete(xml);
                         }
                     } else {
                         if("0".equals(fileLength)) {
-//                            LOG.info("FILE is length===="+fileLength+",HERE...........11111.........");
                             ObjectId VNU = new ObjectId("000000000000000000000000");
                            if(securityEnabled.equals("true")){
                                String publicKey = req.getPublicKey();
@@ -126,15 +124,19 @@ public class AyncSender extends Thread {
                             LOG.info("[ "+req.getKey() +" ]"+ " uploaded successfully................");
                         } else {
                             LOG.info("FILE is length===="+fileLength+",HERE....................");
-                            uploadObject = new UploadObject(req.getPath());
-                            ProgressUtil.putUploadObject(req.getBucketname(),req.getKey(),uploadObject);
-                            uploadObject.upload();
+
                             if(securityEnabled.equals("true")) {
                                 String publicKey = req.getPublicKey();
-                                new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
-                                YTClient client = YTClientMgr.getClient(new_publicKey);
+//                                new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                                YTClient client = YTClientMgr.getClient(publicKey);
+                                uploadObject = client.createUploadObject(req.getPath());
+                                ProgressUtil.putUploadObject(req.getBucketname(),req.getKey(),uploadObject);
+                                uploadObject.upload();
                                 client.createObjectAccessor().createObject(req.getBucketname(), req.getKey(), uploadObject.getVNU(), bs);
                             } else {
+                                uploadObject = new UploadObject(req.getPath());
+                                ProgressUtil.putUploadObject(req.getBucketname(),req.getKey(),uploadObject);
+                                uploadObject.upload();
                                 ObjectHandler.createObject(req.getBucketname(), req.getKey(), uploadObject.getVNU(), bs);
                             }
                             int num = uploadObject.getProgress();
@@ -142,8 +144,6 @@ public class AyncSender extends Thread {
                                 Path obj = Paths.get(req.getPath());
                                 String xmlMeta = header.get("xmlMeta");
                                 Path xml = Paths.get(xmlMeta);
-                                LOG.info("xml======="+xml);
-                                LOG.info("obj======="+obj);
                                 if(Files.exists(obj)) {
                                     Files.delete(obj);
                                 }
@@ -154,7 +154,6 @@ public class AyncSender extends Thread {
                             LOG.info("[ "+req.getKey() +" ]"+ " uploaded successfully................");
 
                             String status = ProgressUtil.getUserHDDStatus();
-                            LOG.info("status ========="+status);
                             if("ERR".equals(status)) {
                                 ProgressUtil.removeUserHDDStatus();
                             }

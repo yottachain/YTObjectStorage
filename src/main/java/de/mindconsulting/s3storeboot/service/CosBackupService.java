@@ -12,8 +12,11 @@ import com.qcloud.cos.transfer.TransferManager;
 import com.qcloud.cos.transfer.TransferManagerConfiguration;
 import com.qcloud.cos.transfer.Upload;
 import com.s3.user.controller.sync.task.AyncFileMeta;
+import com.ytfs.client.v2.YTClient;
+import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.codec.AESCoder;
 import com.ytfs.common.conf.UserConfig;
+import de.mc.ladon.s3server.common.PropertiesUtil;
 import de.mc.ladon.s3server.common.S3Constants;
 import de.mc.ladon.s3server.entities.api.S3CallContext;
 import de.mc.ladon.s3server.entities.api.S3ResponseHeader;
@@ -101,19 +104,28 @@ public class CosBackupService {
             JSONObject json = JSONObject.fromObject(jsonStr);
             appId = json.getString("appId");
         }
+        PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
 
+//        LOG.info("appId = "+appId);
+        int userId = 0 ;
+        if(securityEnabled.equals("true")){
+            String publicKey = req.getPublicKey();
+//            String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+            YTClient client = YTClientMgr.getClient(publicKey);
+            userId = client.getUserId();
+        }else {
+            userId = UserConfig.userId;
+        }
 
-        LOG.info("appId = "+appId);
-        int userId = UserConfig.userId;
         int mod = userId%180;
-        LOG.info("USER_ID = " + UserConfig.userId+",mod = "+mod);
+        LOG.info("USER_ID = " + userId+",mod = "+mod);
         String bucketName = "yotta"+mod+"-"+appId;
         File localFile = new File(req.getAesPath());
-        String fileName = UserConfig.userId+"_"+req.getBucketname()+"_"+req.getKey();
+        String fileName = userId+"_"+req.getBucketname()+"_"+req.getKey();
         String etag = null;
         long fileSize = localFile.length();
         long maxFileSize = 5368709120L;
-//        long maxFileSize = 5120l;
         if(fileSize>maxFileSize) {
             LOG.info("BIG FILE UPLOAD.....");
             etag = uploadBigFile(req.getAesPath(),bucketName,fileName);
@@ -124,12 +136,9 @@ public class CosBackupService {
                 LOG.info("COS SUCCESS,COS OVER ,"+fileName);
                 etag = putObjectResult.getETag();
             }catch (Exception e){
-
                 LOG.error("cos upload failed");
             }
         }
-
-
         return etag;
     }
 
@@ -185,7 +194,16 @@ public class CosBackupService {
         callContext.setResponseHeader(header);
         try {
             if(!head){
-                callContext.setContent(new AESDecryptInputStream(cosObjectInputStream,UserConfig.AESKey));
+                String securityEnabled = this.getValue("s3server.securityEnabled");
+                if(securityEnabled.equals("true")) {
+                    String publicKey  = callContext.getUser().getPublicKey();
+                    String new_publiceKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                    YTClient client = YTClientMgr.getClient(new_publiceKey);
+                    callContext.setContent(new AESDecryptInputStream(cosObjectInputStream,client.getAESKey()));
+                }else {
+                    callContext.setContent(new AESDecryptInputStream(cosObjectInputStream,UserConfig.AESKey));
+                }
+
             }
         } catch (InvalidKeyException e) {
             e.printStackTrace();
@@ -195,6 +213,13 @@ public class CosBackupService {
             e.printStackTrace();
         }
         LOG.info("Download [" + fileName + "] is Success..." );
+    }
+
+    public String getValue(String parmars){
+        String filePath = "../bin/application.properties";
+        PropertiesUtil p = new PropertiesUtil(filePath);
+        String ss = p.readProperty(parmars);
+        return ss;
     }
 
     public byte[] getBytesFromFile(COSObjectInputStream inputStream,long file_size) throws Exception {
@@ -290,23 +315,30 @@ public class CosBackupService {
                 e.printStackTrace();
             }
         }
-
-
-
     }
 
-    public static long copy(InputStream in, OutputStream out,OutputStream aes,String cosBackUp) throws Exception {
+    public static long copy(S3CallContext callContext,InputStream in, OutputStream out,OutputStream aes,String cosBackUp) throws Exception {
         long byteCount = 0;
         byte[] buffer = new byte[131072];
         int bytesRead = -1;
         //腾讯云备份*************
-        AESCoder coder = new AESCoder(Cipher.ENCRYPT_MODE);
+        PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
+        AESCoder coder=null;
+        if(securityEnabled.equals("true")) {
+            String publicKey = callContext.getUser().getPublicKey();
+            String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+            YTClient client = YTClientMgr.getClient(new_publicKey);
+            coder = new AESCoder(Cipher.ENCRYPT_MODE,client.getAESKey());
+        }else {
+            coder = new AESCoder(Cipher.ENCRYPT_MODE);
+        }
         //腾讯云备份*************
         while ((bytesRead = in.read(buffer)) != -1) {
             out.write(buffer, 0, bytesRead);
 
             //腾讯云备份*************
-            if("on".equals(cosBackUp)) {
+            if(!"false".equals(cosBackUp)) {
                 byte[] data = coder.update(buffer,0,bytesRead);
                 aes.write(data);
             }
@@ -314,9 +346,8 @@ public class CosBackupService {
             byteCount += bytesRead;
         }
 
-
         //腾讯云备份*************
-        if("on".equals(cosBackUp)) {
+        if(!"false".equals(cosBackUp)) {
             byte[] data2 = coder.doFinal();
             aes.write(data2);
             aes.close();

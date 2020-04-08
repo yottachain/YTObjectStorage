@@ -61,11 +61,6 @@ public class YottaUser implements Serializable {
             FileInputStream fs = new FileInputStream("../conf/cert.list");
             ObjectInputStream ois = new ObjectInputStream(fs);
             list = (List<YottaUser>) ois.readObject();
-//
-            for(YottaUser user : list) {
-                System.out.println("username="+user.getUsername() + ",privateKey="+user.getPrivateKey());
-            }
-
             ois.close();
         }catch (Exception e) {
             e.printStackTrace();

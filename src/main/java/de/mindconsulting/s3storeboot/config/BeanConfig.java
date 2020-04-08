@@ -12,6 +12,7 @@ import de.mc.ladon.s3server.logging.LoggingRepository;
 import de.mc.ladon.s3server.logging.PerformanceLoggingFilter;
 import de.mc.ladon.s3server.repository.api.S3Repository;
 import de.mc.ladon.s3server.servlet.S3Servlet;
+import de.mindconsulting.s3storeboot.entities.YottaUser;
 import de.mindconsulting.s3storeboot.repository.impl.RepositoryImpl;
 import de.mindconsulting.s3storeboot.util.AESUtil;
 import de.mindconsulting.s3storeboot.util.PropertiesUtil;
@@ -37,6 +38,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
 
 @Configuration
 @Component
@@ -122,9 +124,21 @@ public class BeanConfig {
             //下载文件时最大分片并发数(50-500)
             cfg. setDownloadThread (downloadThread);
             YTClientMgr.init(cfg);
+            try{
+                List<YottaUser> list = YottaUser.read();
+                if(list.size() > 0){
+                    for(YottaUser user : list) {
+                        YTClientMgr.newInstance(user.getUsername(),user.getPrivateKey());
+                    }
+                }
+            }catch (Exception e) {
+                LOG.info("Multiuser initialization is not a significant error...");
+            }
+
+
+
         }else {
             String cert_path = dirctory + "/"+"yts3.conf";
-            LOG.info("cert_path===="+cert_path);
 
             String cert = readCert(cert_path);
 
