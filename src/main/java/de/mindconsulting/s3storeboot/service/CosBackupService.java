@@ -8,8 +8,15 @@ import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.*;
 import com.qcloud.cos.region.Region;
+import com.qcloud.cos.transfer.TransferManager;
+import com.qcloud.cos.transfer.TransferManagerConfiguration;
+import com.qcloud.cos.transfer.Upload;
+import com.s3.user.controller.sync.task.AyncFileMeta;
+import com.ytfs.client.v2.YTClient;
+import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.codec.AESCoder;
 import com.ytfs.common.conf.UserConfig;
+import de.mc.ladon.s3server.common.PropertiesUtil;
 import de.mc.ladon.s3server.common.S3Constants;
 import de.mc.ladon.s3server.entities.api.S3CallContext;
 import de.mc.ladon.s3server.entities.api.S3ResponseHeader;
@@ -19,12 +26,9 @@ import de.mindconsulting.s3storeboot.util.AESDecryptInputStream;
 import de.mindconsulting.s3storeboot.util.CosClientUtil;
 import net.sf.json.JSONObject;
 import org.apache.log4j.Logger;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import java.io.*;
 import java.security.InvalidKeyException;
@@ -33,19 +37,21 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 
 @Configuration
 public class CosBackupService {
 
     private static final Logger LOG = Logger.getLogger(CosBackupService.class);
-    //    public static long appId = 1258989317l;
+        public static long appId = 1258989317l;
 //    public static String bucketName = "yotta"+userId%180+"-"+appId;
     public static String cos_key = "5dc3383e69bd32ca72696e98d31d4c65a4b06c60f962bdf7239d50f2e58ec6c8";
     public static String dirctory = "../conf";
+    public static String regionid = "ap-beijing";
 
     public static COSClient getClient() {
-        LOG.info("directory====="+dirctory + " ,cos_key======"+cos_key);
         String jsonStr = null;
         try {
             jsonStr = CosClientUtil.get_cos_key(dirctory,cos_key);
@@ -53,23 +59,39 @@ public class CosBackupService {
             LOG.error("ERR:::",e);
             e.printStackTrace();
         }
-
-        if(!"".equals(jsonStr)) {
-            JSONObject json = JSONObject.fromObject(jsonStr);
-            COSCredentials cred = new BasicCOSCredentials(json.getString("secretId"), json.getString("secretKey"));
-            ClientConfig clientConfig = new ClientConfig(new Region("ap-beijing"));
-            COSClient cosClient = new COSClient(cred, clientConfig);
-
-            return cosClient;
-        }   else {
-            return null;
-        }
-
+        JSONObject json = JSONObject.fromObject(jsonStr);
+        COSCredentials cred = new BasicCOSCredentials(json.getString("appId"),json.getString("secretId"), json.getString("secretKey"));
+        ClientConfig clientConfig = new ClientConfig(new Region(regionid));
+        COSClient cosclient = new COSClient(cred, clientConfig);
+        return cosclient;
     }
 
+//    public static COSClient getClient() {
+//        LOG.info("directory====="+dirctory + " ,cos_key======"+cos_key);
+//        String jsonStr = null;
+//        try {
+//            jsonStr = CosClientUtil.get_cos_key(dirctory,cos_key);
+//        } catch (Exception e) {
+//            LOG.error("ERR:::",e);
+//            e.printStackTrace();
+//        }
+//
+//        if(!"".equals(jsonStr)) {
+//            JSONObject json = JSONObject.fromObject(jsonStr);
+//            COSCredentials cred = new BasicCOSCredentials(json.getString("secretId"), json.getString("secretKey"));
+//            ClientConfig clientConfig = new ClientConfig(new Region("ap-beijing"));
+//            COSClient cosClient = new COSClient(cred, clientConfig);
+//
+//            return cosClient;
+//        }   else {
+//            return null;
+//        }
+//
+//    }
 
 
-    public String uploadFile(String localFilePath,String bucket,String objectKey) {
+
+    public String uploadFile(AyncFileMeta req) {
         String jsonStr = null;
         String appId = null;
         try {
@@ -82,22 +104,77 @@ public class CosBackupService {
             JSONObject json = JSONObject.fromObject(jsonStr);
             appId = json.getString("appId");
         }
-        COSClient cosClient = this.getClient();
+        PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
 
-        LOG.info("appId = "+appId);
-        int userId = UserConfig.userId;
+//        LOG.info("appId = "+appId);
+        int userId = 0 ;
+        if(securityEnabled.equals("true")){
+            String publicKey = req.getPublicKey();
+//            String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+            YTClient client = YTClientMgr.getClient(publicKey);
+            userId = client.getUserId();
+        }else {
+            userId = UserConfig.userId;
+        }
+
         int mod = userId%180;
-        LOG.info("USER_ID = " + UserConfig.userId+",mod = "+mod);
+        LOG.info("USER_ID = " + userId+",mod = "+mod);
         String bucketName = "yotta"+mod+"-"+appId;
-        File localFile = new File(localFilePath);
-        String fileName = UserConfig.userId+"_"+bucket+"_"+objectKey;
-        LOG.info("COS FILE NAME===="+fileName);
-        PutObjectRequest putObjectRequest = new PutObjectRequest(bucketName,fileName,localFile);
-        PutObjectResult putObjectResult = cosClient.putObject(putObjectRequest);
-        LOG.info("COS OVER ");
-        String etag = putObjectResult.getETag();
-        cosClient.shutdown();
+        File localFile = new File(req.getAesPath());
+        String fileName = userId+"_"+req.getBucketname()+"_"+req.getKey();
+        String etag = null;
+        long fileSize = localFile.length();
+        long maxFileSize = 5368709120L;
+        if(fileSize>maxFileSize) {
+            LOG.info("BIG FILE UPLOAD.....");
+            etag = uploadBigFile(req.getAesPath(),bucketName,fileName);
+            LOG.info("BIG FILE UPLOAD OVER...");
+        }else{
+            try{
+                PutObjectResult putObjectResult = this.upload(bucketName,fileName,localFile);
+                LOG.info("COS SUCCESS,COS OVER ,"+fileName);
+                etag = putObjectResult.getETag();
+            }catch (Exception e){
+                LOG.error("cos upload failed");
+            }
+        }
         return etag;
+    }
+
+    public PutObjectResult upload(String bucket,String fileName,File localFile){
+        COSClient cosClient = this.getClient();
+        PutObjectRequest putObjectRequest = new PutObjectRequest(bucket,fileName,localFile);
+        PutObjectResult putObjectResult = cosClient.putObject(putObjectRequest);
+        cosClient.shutdown();
+        return putObjectResult;
+    }
+
+
+    public String uploadBigFile(String localFilePath,String bucket,String objectKey){
+        COSClient cosClient = getClient();
+        ExecutorService threadPool = Executors.newFixedThreadPool(32);
+        TransferManager transferManager = new TransferManager(cosClient, threadPool);
+// 设置高级接口的分块上传阈值和分块大小为10MB
+        TransferManagerConfiguration transferManagerConfiguration = new TransferManagerConfiguration();
+        transferManagerConfiguration.setMultipartUploadThreshold(10 * 1024 * 1024);
+        transferManagerConfiguration.setMinimumUploadPartSize(10 * 1024 * 1024);
+        transferManager.setConfiguration(transferManagerConfiguration);
+        File file = new File(localFilePath);
+        PutObjectRequest putObjectRequest = new PutObjectRequest(bucket, objectKey, file);
+        // 本地文件上传
+        Upload upload = transferManager.upload(putObjectRequest);
+        // 等待传输结束（如果想同步的等待上传结束，则调用 waitForCompletion）
+        UploadResult uploadResult = null;
+        try {
+            uploadResult = upload.waitForUploadResult();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        String Etag = uploadResult.getETag();
+        transferManager.shutdownNow();
+        cosClient.shutdown();
+        return Etag;
     }
 
     public void downloadFile(S3CallContext callContext,String bucket, String fileName,long fileSize,boolean head) {
@@ -114,12 +191,19 @@ public class CosBackupService {
         header.setEtag(ETag);
         header.setContentType(contentType);
         header.setConnection(S3Constants.Connection.valueOf("open"));
-//        header.setContentType(cosObject.getObjectMetadata().getRawMetadata().get());
-//        header.setConnection(cosObject.getObjectMetadata().);
         callContext.setResponseHeader(header);
         try {
             if(!head){
-                callContext.setContent(new AESDecryptInputStream(cosObjectInputStream,UserConfig.AESKey));
+                String securityEnabled = this.getValue("s3server.securityEnabled");
+                if(securityEnabled.equals("true")) {
+                    String publicKey  = callContext.getUser().getPublicKey();
+                    String new_publiceKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                    YTClient client = YTClientMgr.getClient(new_publiceKey);
+                    callContext.setContent(new AESDecryptInputStream(cosObjectInputStream,client.getAESKey()));
+                }else {
+                    callContext.setContent(new AESDecryptInputStream(cosObjectInputStream,UserConfig.AESKey));
+                }
+
             }
         } catch (InvalidKeyException e) {
             e.printStackTrace();
@@ -129,6 +213,13 @@ public class CosBackupService {
             e.printStackTrace();
         }
         LOG.info("Download [" + fileName + "] is Success..." );
+    }
+
+    public String getValue(String parmars){
+        String filePath = "../bin/application.properties";
+        PropertiesUtil p = new PropertiesUtil(filePath);
+        String ss = p.readProperty(parmars);
+        return ss;
     }
 
     public byte[] getBytesFromFile(COSObjectInputStream inputStream,long file_size) throws Exception {
@@ -150,6 +241,8 @@ public class CosBackupService {
         return bytes;
 
     }
+
+
 
     public List<COSObjectSummary> listObjects(ListObjectsRequest request) throws CosClientException{
         COSClient cosClient = this.getClient();
@@ -222,23 +315,30 @@ public class CosBackupService {
                 e.printStackTrace();
             }
         }
-
-
-
     }
 
-    public static long copy(InputStream in, OutputStream out,OutputStream aes,String cosBackUp) throws Exception {
+    public static long copy(S3CallContext callContext,InputStream in, OutputStream out,OutputStream aes,String cosBackUp) throws Exception {
         long byteCount = 0;
         byte[] buffer = new byte[131072];
         int bytesRead = -1;
         //腾讯云备份*************
-        AESCoder coder = new AESCoder(Cipher.ENCRYPT_MODE);
+        PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
+        AESCoder coder=null;
+        if(securityEnabled.equals("true")) {
+            String publicKey = callContext.getUser().getPublicKey();
+            String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+            YTClient client = YTClientMgr.getClient(new_publicKey);
+            coder = new AESCoder(Cipher.ENCRYPT_MODE,client.getAESKey());
+        }else {
+            coder = new AESCoder(Cipher.ENCRYPT_MODE);
+        }
         //腾讯云备份*************
         while ((bytesRead = in.read(buffer)) != -1) {
             out.write(buffer, 0, bytesRead);
 
             //腾讯云备份*************
-            if("on".equals(cosBackUp)) {
+            if(!"false".equals(cosBackUp)) {
                 byte[] data = coder.update(buffer,0,bytesRead);
                 aes.write(data);
             }
@@ -246,9 +346,8 @@ public class CosBackupService {
             byteCount += bytesRead;
         }
 
-
         //腾讯云备份*************
-        if("on".equals(cosBackUp)) {
+        if(!"false".equals(cosBackUp)) {
             byte[] data2 = coder.doFinal();
             aes.write(data2);
             aes.close();
@@ -281,79 +380,18 @@ public class CosBackupService {
     }
 
     public static void main(String []args) {
-        List<Part> parts = new ArrayList<>();
-        Part part1 = new Part();
-        part1.setPartNumber(8);
-        part1.setEtag("desfsdsds");
-        part1.setFilePath("sdfsdsdsds");
-        part1.setSize(3000);
-        part1.setTempFilePath("sfsdsdsds");
-        parts.add(part1);
-        Part part2 = new Part();
-        part2.setPartNumber(6);
-        part2.setEtag("desfssdsadsds");
-        part2.setFilePath("sdfaasasdsdsds");
-        part2.setSize(322000);
-        part2.setTempFilePath("sfsddsdfdfssdsds");
-        parts.add(part2);
-        Part part3 = new Part();
-        part3.setPartNumber(1);
-        part3.setEtag("desfsfsdsds");
-        part3.setFilePath("sdfsssdsdsds");
-        part3.setSize(30060);
-        part3.setTempFilePath("sfsdsdsfsdsds");
-        parts.add(part3);
-        Part part4 = new Part();
-        part4.setPartNumber(2);
-        part4.setEtag("desfsdsds");
-        part4.setFilePath("sdfsdsdsds");
-        part4.setSize(3000);
-        part4.setTempFilePath("sfsdsdsds");
-        parts.add(part4);
-        Part part5 = new Part();
-        part5.setPartNumber(3);
-        part5.setEtag("desfsdsds");
-        part5.setFilePath("sdfsdsdsds");
-        part5.setSize(3000);
-        part5.setTempFilePath("sfsdsdsds");
-        parts.add(part5);
-        Part part6 = new Part();
-        part6.setPartNumber(4);
-        part6.setEtag("desfsdsds");
-        part6.setFilePath("sdfsdsdsds");
-        part6.setSize(3000);
-        part6.setTempFilePath("sfsdsdsds");
-        parts.add(part6);
-        Part part7 = new Part();
-        part7.setPartNumber(5);
-        part7.setEtag("desfsdsds");
-        part7.setFilePath("sdfsdsdsds");
-        part7.setSize(3000);
-        part7.setTempFilePath("sfsdsdsds");
-        parts.add(part7);
-        Part part8 = new Part();
-        part8.setPartNumber(7);
-        part8.setEtag("desfsdsds");
-        part8.setFilePath("sdfsdsdsds");
-        part8.setSize(3000);
-        part8.setTempFilePath("sfsdsdsds");
-        parts.add(part8);
         CosBackupService service = new CosBackupService();
-        List<Part> partList = service.sortList(parts);
-        for(Part part:partList){
-            LOG.info("partnumber:"+part.getPartNumber());
+        for(int i=0;i<=555;i++) {
+            String prefix = i + "_";
+            LOG.info("开始迁移用户: " + i + " 的数据") ;
+            try{
+                service.copyObject(prefix);
+            }catch (Exception e) {
+                LOG.info("ERR:",e);
+            }
+
+
         }
-//        for(int i=0;i<=215;i++) {
-//            String prefix = i + "_";
-//            LOG.info("开始迁移用户: " + i + " 的数据") ;
-//            try{
-//                service.copyObject(prefix);
-//            }catch (Exception e) {
-//                LOG.info("ERR:",e);
-//            }
-//
-//
-//        }
     }
 
 }

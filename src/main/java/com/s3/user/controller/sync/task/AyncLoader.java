@@ -36,7 +36,6 @@ public class AyncLoader extends Thread {
     @Override
     public void run() {
         LOG.info("System start initiate asynchronous file upload task...");
-        LOG.info("SYNC_DIR====" + SYNC_DIR);
 //        Path syncDir = Paths.get(SYNC_DIR+"/"+"xml");
 
         String[] objectList = new File(SYNC_DIR+"/"+"xml").list();
@@ -45,7 +44,6 @@ public class AyncLoader extends Thread {
         if(objectList == null) {
             return;
         }
-        LOG.info("File count::::" + objectList.length);
         if(objectList.length > 0) {
             for(int i=0;i<objectList.length;i++) {
                 File file = new File(SYNC_DIR+"/"+"xml"+"/"+objectList[i]);
@@ -72,25 +70,20 @@ public class AyncLoader extends Thread {
 
     //cos文件加入线程池
     private  void addAyncPool(String xmlPath,String cosXml) {
-        String[] objectList = new File(xmlPath).list();
+//        String[] objectList = new File(xmlPath).list();
         String[] cos_List = new File(cosXml).list();
-        LOG.info("object_list[]......"+objectList.length);
-        LOG.info("The queue length========="+AyncUploadSenderPool.queue.size());
-//        if(objectList.length < 2 && AyncUploadSenderPool.queue.size() < 5) {
-            if(cos_List != null) {
-                for(int i=0;i<cos_List.length;i++) {
-                    File file = new File(cosXml + "/" + cos_List[i]);
-                    Path meta = Paths.get(file.getPath());
-                    AyncFileMeta fileMeta = loadAyncFileMeta(meta);
-                    fileMeta.setPath("cos");
-                    boolean b = AyncUploadSenderPool.addAyncFileMeta(fileMeta);
-                    if (b) {
-                        LOG.info("ok");
-                    }
+        if(cos_List != null) {
+            for(int i=0;i<cos_List.length;i++) {
+                File file = new File(cosXml + "/" + cos_List[i]);
+                Path meta = Paths.get(file.getPath());
+                AyncFileMeta fileMeta = loadAyncFileMeta(meta);
+                fileMeta.setPath("cos");
+                boolean b = AyncUploadSenderPool.addAyncFileMeta(fileMeta);
+                if (b) {
+                    LOG.info("ok");
                 }
             }
-//        }
-
+        }
     }
 
     //异步上传，读meta
@@ -98,8 +91,6 @@ public class AyncLoader extends Thread {
 
         try (InputStream in = Files.newInputStream(meta)) {
             AyncFileMeta metaData = (AyncFileMeta) jaxbContext.createUnmarshaller().unmarshal(in);
-
-
             in.close();
             return metaData;
         } catch (IOException | JAXBException e) {

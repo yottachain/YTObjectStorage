@@ -85,9 +85,8 @@ public class PropertiesUtil {
 	}
 
 	public static void main(String[] args) {
-		PropertiesUtil p = new PropertiesUtil("D:/NEW-WORK/application.properties");
-		p.readProperty("s3server.SYNC_BUCKET");
-		p.writeProperty("s3server.KUSp","123456");
-		System.out.println(p.readProperty("s3server.KUSp"));
+		PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
+		String loggingEnable = p.readProperty("s3server.loggingEnabled");
+		System.out.println(loggingEnable);
 	}
 }
