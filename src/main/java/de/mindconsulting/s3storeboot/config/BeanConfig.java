@@ -110,6 +110,11 @@ public class BeanConfig {
     @Bean
     ServletRegistrationBean s3Registration(S3ServletConfiguration config, S3Repository repository) throws IOException {
         if(securityEnabled.equals("true")) {
+            String certList = dirctory + "/" + "cert.list";
+            Path path = Paths.get(certList);
+            if(!Files.exists(path)) {
+                Files.createFile(path);
+            }
             Configurator cfg=new Configurator();
             //矿机列表长度(328-1000)
             cfg.setPNN(PNN);
