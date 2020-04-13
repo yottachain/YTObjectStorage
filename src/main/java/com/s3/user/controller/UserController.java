@@ -173,6 +173,30 @@ public class UserController {
         AESUtil.getDecryptFile(data,path,"ladon-s3-server.rar");
     }
 
+    @RequestMapping(value = "/getPublicKey",method = RequestMethod.GET)
+    @ResponseBody
+    public String getPublicKey(HttpServletRequest request,HttpServletResponse response) {
+        response.setHeader("Access-Control-Allow-Origin","*");
+        String privateKey = request.getParameter("privateKey");
+        String publicKey = null;
+        try {
+            publicKey=KeyUtil.toPublicKey(privateKey).replace("EOS", "YTA");
+        }catch (Exception e) {
+//            return Ret.error().setData("The private key is wrong 111...");
+        }
+
+        String jsonStr = "{\"public_key\":" + "\"" + publicKey + "\"}";
+        String result = null;
+        try {
+            result = HttpClientUtils.ocPost(eosHistoryUrl + "get_key_accounts", jsonStr);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        String ss = "{\"public_key\":" + "\"" + publicKey +",\"names\":" + "\"" + result+ "\"}";
+        return ss;
+    }
+
+
     @RequestMapping(value = "/insertUser",method = RequestMethod.POST)
     @ResponseBody
     public Ret addUser(HttpServletRequest request,HttpServletResponse response) {
