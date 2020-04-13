@@ -127,7 +127,6 @@ public class AyncSender extends Thread {
 
                             if(securityEnabled.equals("true")) {
                                 String publicKey = req.getPublicKey();
-//                                new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
                                 YTClient client = YTClientMgr.getClient(publicKey);
                                 uploadObject = client.createUploadObject(req.getPath());
                                 ProgressUtil.putUploadObject(req.getBucketname(),req.getKey(),uploadObject);
