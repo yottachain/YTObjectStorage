@@ -1,6 +1,7 @@
 package de.mindconsulting.s3storeboot.entities;
 
 import java.io.*;
+import java.io.File;
 import java.util.*;
 
 public class YottaUser implements Serializable {
@@ -58,12 +59,15 @@ public class YottaUser implements Serializable {
     public static List<YottaUser> read() {
         List<YottaUser> list = new ArrayList<>();
         try{
-            FileInputStream fs = new FileInputStream("../conf/cert.list");
-            ObjectInputStream ois = new ObjectInputStream(fs);
-            list = (List<YottaUser>) ois.readObject();
-            ois.close();
+            File file = new File("../conf/cert.list");
+            if(file.length() > 0) {
+                FileInputStream fs = new FileInputStream("../conf/cert.list");
+                ObjectInputStream ois = new ObjectInputStream(fs);
+                list = (List<YottaUser>) ois.readObject();
+                ois.close();
+            }
         }catch (Exception e) {
-            e.printStackTrace();
+
         }
         return list;
     }
