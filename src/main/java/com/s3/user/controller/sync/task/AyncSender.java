@@ -109,7 +109,6 @@ public class AyncSender extends Thread {
                            } else {
                                ObjectHandler.createObject(req.getBucketname(), req.getKey(), VNU, bs);
                            }
-
                             Path obj = Paths.get(req.getPath());
                             String xmlMeta = header.get("xmlMeta");
                             Path xml = Paths.get(xmlMeta);
@@ -156,7 +155,7 @@ public class AyncSender extends Thread {
                             if("ERR".equals(status)) {
                                 ProgressUtil.removeUserHDDStatus();
                             }
-                            if("on".equals(AyncUploadSenderPool.newInstance().cosBackUp)) {
+                            if(!"false".equals(AyncUploadSenderPool.newInstance().cosBackUp)) {
                                 req.setPath("cos");
                                 AyncUploadSenderPool.putAyncFileMeta(req);
                             }
