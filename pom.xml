@@ -6,10 +6,7 @@
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>2.1.4.RELEASE</version>
-
-
 		<relativePath/> <!-- lookup parent from repository -->
-
 	</parent>
 	<groupId>de.mindconsulting</groupId>
 	<artifactId>YTObjectStorage</artifactId>
@@ -22,7 +19,6 @@
 		<java.version>1.8</java.version>
 		<s3-server.version>${project.version}</s3-server.version>
 	</properties>
-
 	<dependencies>
 		<dependency>
 			<groupId>de.mindconsulting</groupId>
@@ -34,40 +30,19 @@
 			<artifactId>javax.servlet-api</artifactId>
 			<version>3.1.0</version>
 		</dependency>
-		<!--<dependency>-->
-			<!--<groupId>org.slf4j</groupId>-->
-			<!--<artifactId>slf4j-api</artifactId>-->
-			<!--<version>1.7.18</version>-->
-		<!--</dependency>-->
 		<dependency>
 			<groupId>org.osgi</groupId>
 			<artifactId>org.osgi.core</artifactId>
 			<version>6.0.0</version>
 			<scope>provided</scope>
 		</dependency>
-		<!--<dependency>-->
-			<!--<groupId>com.google.guava</groupId>-->
-			<!--<artifactId>guava</artifactId>-->
-			<!--<version>19.0</version>-->
-		<!--</dependency>-->
 
-		<!--<dependency>-->
-			<!--<groupId>com.google.guava</groupId>-->
-			<!--<artifactId>guava</artifactId>-->
-			<!--<version>26.0-android</version>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>com.ibm.etcd</groupId>-->
-			<!--<artifactId>etcd-java</artifactId>-->
-			<!--<version>0.0.11</version>-->
-		<!--</dependency>-->
 		<dependency>
 			<groupId>org.osgi</groupId>
 			<artifactId>org.osgi.service.http</artifactId>
 			<version>1.2.1</version>
 			<scope>provided</scope>
 		</dependency>
-
 		<dependency>
 			<groupId>YTSDK</groupId>
 			<artifactId>YTSDK</artifactId>
@@ -77,12 +52,10 @@
 					<groupId>org.mongodb</groupId>
 					<artifactId>mongodb-driver</artifactId>
 				</exclusion>
-
 				<exclusion>
 					<groupId>MsgDef</groupId>
 					<artifactId>MsgDef</artifactId>
 				</exclusion>
-
 			</exclusions>
 		</dependency>
 
@@ -97,17 +70,6 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
-<!--		<dependency>-->
-<!--			<groupId>p2p-wrapper</groupId>-->
-<!--			<artifactId>p2p-wrapper</artifactId>-->
-<!--			<version>0.1</version>-->
-<!--		</dependency>-->
-<!--		<dependency>-->
-<!--			<groupId>wrapper</groupId>-->
-<!--			<artifactId>wrapper</artifactId>-->
-<!--			<version>3.51</version>-->
-<!--		</dependency>-->
-
 		<dependency>
 			<groupId>org.mongodb</groupId>
 			<artifactId>bson</artifactId>
@@ -123,30 +85,6 @@
 			<artifactId>crc</artifactId>
 			<version>1.0.2</version>
 		</dependency>
-
-		<!--<dependency>-->
-			<!--<groupId>io.protostuff</groupId>-->
-			<!--<artifactId>protostuff-runtime</artifactId>-->
-			<!--<version>1.6.0</version>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>com.google.protobuf</groupId>-->
-			<!--<artifactId>protobuf-java</artifactId>-->
-			<!--<version>3.5.0</version>-->
-			<!--<scope>test</scope>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>io.protostuff</groupId>-->
-			<!--<artifactId>protostuff-core</artifactId>-->
-			<!--<version>1.6.0</version>-->
-		<!--</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>com.amazonaws</groupId>-->
-			<!--<artifactId>aws-java-sdk-s3</artifactId>-->
-			<!--<version>1.10.54</version>-->
-			<!--<scope>test</scope>-->
-		<!--</dependency>-->
-		<!-- https://mvnrepository.com/artifact/com.amazonaws/aws-java-sdk-s3 -->
 		<dependency>
 			<groupId>com.amazonaws</groupId>
 			<artifactId>aws-java-sdk-s3</artifactId>
@@ -174,22 +112,13 @@
 				</exclusion>
 			</exclusions>
 		</dependency>
-		<!--<dependency>-->
-			<!--<groupId>org.springframework.boot</groupId>-->
-			<!--<artifactId>spring-boot-starter-log4j</artifactId>-->
-			<!--<version>2.0.2.RELEASE</version>-->
-		<!--</dependency>-->
-		<!---->
+
 		<dependency>
 			<groupId>io.jafka</groupId>
 			<artifactId>jeos</artifactId>
 			<version>0.9.14</version>
 		</dependency>
-		<!--<dependency>-->
-			<!--<groupId>net.java.dev.jna</groupId>-->
-			<!--<artifactId>jna-platform</artifactId>-->
-			<!--<version>5.2.0</version>-->
-		<!--</dependency>-->
+
 		<dependency>
 			<groupId>net.java.dev.jna</groupId>
 			<artifactId>jna</artifactId>
@@ -287,9 +216,6 @@
 			<artifactId>aliyun-sdk-oss</artifactId>
 			<version>3.8.0</version>
 		</dependency>
-
-
-
 		<dependency>
 			<groupId>nodemgmt-java-binding</groupId>
 			<artifactId>nodemgmt-java-binding</artifactId>
@@ -302,16 +228,6 @@
 			<version>1.0.2</version>
 		</dependency>
 
-<!--		<dependency>-->
-<!--			<groupId>commons-codec</groupId>-->
-<!--			<artifactId>commons-codec</artifactId>-->
-<!--			<version>1.9</version>-->
-<!--		</dependency>-->
-		<!--<dependency>-->
-			<!--<groupId>org.mongodb</groupId>-->
-			<!--<artifactId>mongodb-driver</artifactId>-->
-			<!--<version>3.8.2</version>-->
-		<!--</dependency>-->
 		<dependency>
 			<groupId>io.protostuff</groupId>
 			<artifactId>protostuff-core</artifactId>
@@ -427,7 +343,16 @@
 			<artifactId>zipkin-sender-okhttp3</artifactId>
 			<version>2.10.0</version>
 		</dependency>
-
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi</artifactId>
+			<version>3.11</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-ooxml</artifactId>
+			<version>3.11</version>
+		</dependency>
 	</dependencies>
 
 	<!--<build>-->
@@ -476,7 +401,6 @@
 				</archive>
 			</configuration>
 		</plugin>
-
 		<plugin>
 			<groupId>org.apache.maven.plugins</groupId>
 			<artifactId>maven-dependency-plugin</artifactId>
@@ -494,7 +418,6 @@
 				</execution>
 			</executions>
 		</plugin>
-
 		<plugin>
 			<groupId>org.apache.maven.plugins</groupId>
 			<artifactId>maven-resources-plugin</artifactId>
@@ -503,7 +426,6 @@
 				<encoding>${project.build.sourceEncoding}</encoding>
 			</configuration>
 		</plugin>
-
 		<plugin>
 			<groupId>org.apache.maven.plugins</groupId>
 			<artifactId>maven-source-plugin</artifactId>

@@ -21,6 +21,8 @@ import io.jafka.jeos.util.KeyUtil;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.apache.log4j.Logger;
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
+import org.apache.poi.ss.usermodel.*;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -160,8 +162,6 @@ public class UserController {
             return "SUCCESS";
         }
     }
-
-
     @RequestMapping(value = "/decrypt",method = RequestMethod.GET)
     @ResponseBody
     public void getDecryptFile(HttpServletRequest request) throws Exception{
@@ -517,5 +517,103 @@ public class UserController {
         String privateKey = UserConfig.privateKey;
         String username = UserConfig.username;
        LOG.info("userID : "+userID+" ,username : "+ username + " ,privateKey : "+ privateKey);
+    }
+    @RequestMapping(value = "/importUsers",method = RequestMethod.POST)
+    @ResponseBody
+    public Ret importUsers(HttpServletRequest request,HttpServletResponse response) {
+        response.setHeader("Access-Control-Allow-Origin","*");
+        List<YottaUser> users = new ArrayList<>();
+        Workbook wb = null; //拿到文件
+        try {
+            Path path = Paths.get("../excel/users.xlsx");
+            if(Files.exists(path)){
+                wb = WorkbookFactory.create(new File("../excel/users.xlsx"));
+            } else {
+                return Ret.error().setMsg("Please place users.xlsx in the excel directory.");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (InvalidFormatException e) {
+            e.printStackTrace();
+        }
+        Sheet sheet = wb.getSheetAt(0);
+        int lastRowNum = sheet.getLastRowNum();
+        for (int i = 1; i <= lastRowNum; i++) {
+            Row row = sheet.getRow(i);
+            short lastCellNum = row.getLastCellNum();
+           YottaUser user = new YottaUser();
+            for (int j = 0; j < lastCellNum; j++) {
+                Cell cell = row.getCell(j);
+                if(j == 0 && !cell.getStringCellValue().trim().isEmpty()) {
+                    user.setUsername(cell.getStringCellValue());
+                }
+                if(j == 1 && !cell.getStringCellValue().trim().isEmpty()){
+                    user.setPrivateKey(cell.getStringCellValue());
+                }
+            }
+            if(user.getPrivateKey() !=null || user.getUsername() != null) {
+                users.add(user);
+            }
+
+        }
+        try {
+            wb.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        List<YottaUser> listUser = new ArrayList<>();
+        if(users.size() > 0) {
+
+            for(YottaUser yottaUser : users){
+                boolean flag = this.validateUser(yottaUser);
+                if(!flag) {
+                    LOG.error("Please check the user information is correct, username:"+yottaUser.getUsername()+" ,privateKey:"+yottaUser.getPrivateKey());
+//                    users.remove(yottaUser);
+                } else {
+                    listUser.add(yottaUser);
+                    try {
+                        YTClientMgr.newInstance(yottaUser.getUsername(),yottaUser.getPrivateKey());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
+            }
+            YottaUser.save(listUser);
+        }
+
+        LOG.info("Batch import users completed, the number of successful import users is " + listUser.size());
+//        return Ret.ok().setMsg("Batch import users completed, the number of successful import users is " + listUser.size());
+        return Ret.ok().setData(listUser).setMsg("Batch import users completed, the number of successful import users is " + listUser.size());
+    }
+
+
+    public boolean validateUser(YottaUser user) {
+        String publicKey = null;
+        try {
+            publicKey=KeyUtil.toPublicKey(user.getPrivateKey()).replace("EOS", "YTA");
+        }catch (Exception e) {
+            return false;
+        }
+        String jsonStr = "{\"public_key\":" + "\"" + publicKey + "\"}";
+        String result = null;
+        try {
+            result = HttpClientUtils.ocPost(eosHistoryUrl + "get_key_accounts", jsonStr);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+        JSONObject json = JSONObject.fromObject(result);
+        JSONArray array = json.getJSONArray("account_names");
+        if(array.size() > 0) {
+            //判断用户输入的username是否正确  如果不正确 返回错误
+            if(!array.contains(user.getUsername())) {
+                return false;
+            }
+        } else {
+            //返回错误  根据当前信息没有查到用户
+            return false;
+        }
+        return true;
     }
 }
