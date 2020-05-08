@@ -1,7 +1,7 @@
 package de.mindconsulting.s3storeboot;
 
+import com.ytfs.client.ClientInitor;
 import org.apache.catalina.connector.Connector;
-import org.springframework.boot.Banner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
@@ -32,6 +32,7 @@ public class YTObjectStorageApplication implements WrapperListener{
 
     @Override
     public int stop(int exitCode) {
+        ClientInitor.stop();
         SpringApplication.exit(context);
         return exitCode;
     }
