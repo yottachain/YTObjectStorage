@@ -6,6 +6,7 @@ import com.qcloud.cos.COSClient;
 import com.qcloud.cos.model.COSObject;
 import com.qcloud.cos.model.COSObjectInputStream;
 import com.qcloud.cos.model.GetObjectRequest;
+import com.qcloud.cos.model.ObjectMetadata;
 import com.s3.user.controller.sync.task.AyncFileMeta;
 import com.s3.user.controller.sync.task.AyncUploadSenderPool;
 import com.ytfs.client.BackupCaller;
@@ -40,7 +41,9 @@ import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
 import org.w3c.dom.Document;
 
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
@@ -188,7 +191,7 @@ public class RepositoryImpl implements S3Repository {
             if(version_status == null || "".equals(version_status)) {
                 header.put("version_status","Enabled");
             }
-            header.put("etag",S3Constants.ETAG);
+//            header.put("etag",S3Constants.ETAG);
             byte[] new_byte = SerializationUtil.serializeMap(header);
             if(securityEnabled.equals("true")) {
                 String publicKey = callContext.getUser().getPublicKey();
@@ -381,7 +384,7 @@ public class RepositoryImpl implements S3Repository {
                 header.put(additional[i], additional[i + 1]);
             }
         }
-        header.put("x-amz-date",(new Date()).getTime()+"");
+//        header.put("x-amz-date",(new Date()).getTime()+"");
 //        header.put("etag",callContext.getHeader().getEtag());
         byte[] bs = SerializationUtil.serializeMap(header);
         LOG.info("meta length :::"+bs.length);
@@ -426,15 +429,19 @@ public class RepositoryImpl implements S3Repository {
 
     @Override
     public S3Object createObject(S3CallContext callContext, String bucketName, String objectKey) {
-        //1、判断链上是否存在此bucket，如果不存在创建，bucketName必须合法
         String publicKey = null;
         boolean isBucketExist = this.checkBucketExist(callContext,bucketName);
         PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
         String securityEnabled = p.readProperty("s3server.securityEnabled");
-
+        long allowMaxSize = Long.parseLong(p.readProperty("s3server.allowMaxSize"));
+        LOG.info("文件大小："+callContext.getHeader().getContentLength());
         if(securityEnabled.equals("true")) {
             publicKey = callContext.getUser().getPublicKey().substring(callContext.getUser().getPublicKey().indexOf("YTA")+3);
         }
+        if(allowMaxSize >= 5242880) {
+            allowMaxSize = 5242880;
+        }
+
         byte[] metaByte = new byte[0];
         if(!isBucketExist) {
             //如果不存在 则创建bucket
@@ -444,10 +451,7 @@ public class RepositoryImpl implements S3Repository {
                 header.put("version_status","Enabled");
             }
             byte[] new_byte = SerializationUtil.serializeMap(header);
-
-
             try {
-
                 if(securityEnabled.equals("true")) {
                     YTClient client = YTClientMgr.getClient(publicKey);
                     client.createBucketAccessor().createBucket(bucketName,new_byte);
@@ -459,277 +463,368 @@ public class RepositoryImpl implements S3Repository {
                 e.printStackTrace();
             }
         }
+        //如果文件大小小于allowMaxSize,则不写缓存
+        if(callContext.getHeader().getContentLength() < allowMaxSize && callContext.getHeader().getContentLength() > 0) {
+            DigestInputStream din = null;
+            try {
+                din = new DigestInputStream(callContext.getContent(), MessageDigest.getInstance("MD5"));
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (NoSuchAlgorithmException e) {
+                e.printStackTrace();
+            }
 
-        if ("on".equals(status_sync)) {
-            LOG.info("AYNC UPLOAD STARTING...........");
-            this.ayncFileUpload(callContext,bucketName,objectKey);
-            return null;
-        }else {
+            ByteArrayOutputStream swapStream = new ByteArrayOutputStream();
+            byte[] buff = new byte[100]; //buff用于存放循环读取的临时数据
+            int rc = 0;
+            try{
+                while ((rc = callContext.getContent().read(buff, 0, 100)) > 0) {
+                    swapStream.write(buff, 0, rc);
+                }
+            }catch (IOException e) {
+                e.printStackTrace();
+            }
 
-            Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
-            Path metaBucket = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
-            if (!Files.exists(dataBucket)){
-                try {
-                    Files.createDirectories(dataBucket);
+            byte[] in_b = swapStream.toByteArray();
+
+            byte[] md5bytes = din.getMessageDigest().digest();
+            String storageMd5base16 = Encoding.toHex(md5bytes);
+            Map<String,String> header = new HashMap<>();
+
+            header.put("ETag",inQuotes(storageMd5base16));
+            header.put("contentLength",callContext.getHeader().getContentLength()+"");
+            header.put("x-amz-date",(new Date()).getTime()+"");
+            byte[] bs = SerializationUtil.serializeMap(header);
+
+            //如果是多用户版本
+            if(securityEnabled.equals("true")){
+                try{
+                    YTClient client = YTClientMgr.getClient(publicKey);
+                    UploadObject uploadObject = client.createUploadObject(in_b);
+                    ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
+                    uploadObject.upload();
+                    client.createObjectAccessor().createObject(bucketName, objectKey, uploadObject.getVNU(), bs);
+                    if(!cosBackUp.equals("false")) {
+                        int mod = client.getUserId()%180;
+                        String cosBucket = "yotta"+mod+"-"+1258989317l;
+                        String fileName = client.getUserId()+"_"+bucketName+"_"+objectKey;
+                        AESCoder coder1 = new AESCoder(Cipher.ENCRYPT_MODE,client.getAESKey());
+                        try {
+                            byte[] data = coder1.doFinal(in_b);
+                            InputStream is = new ByteArrayInputStream(data);
+                            String cosEtag = CosBackupService.uploadSmallObject(cosBucket,fileName,is);
+                            LOG.info("cos etag : "+cosEtag);
+                        } catch (IllegalBlockSizeException e) {
+                            e.printStackTrace();
+                        } catch (BadPaddingException e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                } catch (ServiceException e) {
+                    e.printStackTrace();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } catch (NoSuchPaddingException e) {
+                    e.printStackTrace();
+                } catch (NoSuchAlgorithmException e) {
+                    e.printStackTrace();
                 } catch (IOException e) {
                     e.printStackTrace();
+                } catch (InvalidKeyException e) {
+                    e.printStackTrace();
                 }
-            }
-            if(!Files.exists((metaBucket))) {
-                try {
-                    Files.createDirectories(metaBucket);
+            } else {
+                try{
+                    UploadObject uploadObject = new UploadObject(in_b);
+                    ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
+                    uploadObject.upload();
+                    ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), bs);
+                    if(!cosBackUp.equals("false")){
+                        int mod = UserConfig.userId % 180;
+                        String cosBucket = "yotta"+mod+"-"+1258989317l;
+                        String fileName = UserConfig.userId+"_"+bucketName+"_"+objectKey;
+                        AESCoder coder2 = new AESCoder(Cipher.ENCRYPT_MODE);
+                        byte[] data = coder2.doFinal(in_b);
+                        InputStream is = new ByteArrayInputStream(data);
+                        String cosEtag = CosBackupService.uploadSmallObject(cosBucket,fileName,is);
+                        LOG.info("cos etag : "+cosEtag);
+                    }
+                }catch (ServiceException e){
+                    e.printStackTrace();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 } catch (IOException e) {
                     e.printStackTrace();
-                }
-            }
-            String tempFileName = UUID.randomUUID().toString();
-            //腾讯云备份*****************************
-
-            //腾讯云备份*****************************
-            Path meta = metaBucket.resolve(tempFileName + META_XML_EXTENSION);
-            Path obj = dataBucket.resolve(tempFileName);
-            Long contentLength = callContext.getHeader().getContentLength();
-            lock(metaBucket, tempFileName, S3Lock.LockType.write, callContext);
-            try (InputStream in = callContext.getContent()) {
-                Files.createDirectories(obj.getParent());
-                Files.createFile(obj);
-
-                //腾讯云备份*****************************
-                OutputStream aes = null;
-                Path AESKyeObj=null;
-                if(!"false".equals(cosBackUp)){
-                    String aesTmpObj = UUID.randomUUID().toString();
-                    AESKyeObj = dataBucket.resolve(aesTmpObj);
-                    LOG.info("AESKyeObj====="+AESKyeObj.toString());
-                    Files.createFile(AESKyeObj);
-                    aes = Files.newOutputStream(AESKyeObj);
-                }
-                //腾讯云备份*****************************
-                DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
-                try (OutputStream out = Files.newOutputStream(obj)) {
-                    long bytesCopied = 0;
-                    //腾讯云备份******************
-                    try {
-                        bytesCopied = CosBackupService.copy(callContext,din,out,aes,cosBackUp);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                    if(!"false".equals(cosBackUp)){
-                        aes.flush();
-                        aes.close();
-                    }
-                    //腾讯云备份******************
-//                    bytesCopied = StreamUtils.copy(callContext.getContent(), out);
-                    byte[] md5bytes = din.getMessageDigest().digest();
-//                    String storageMd5base64 = BaseEncoding.base64().encode(md5bytes);
-                    String storageMd5base16 = Encoding.toHex(md5bytes);
-
-                    if (contentLength != null && contentLength != bytesCopied ) {
-                        Files.delete(obj);
-                        Files.deleteIfExists(meta);
-                        throw new InvalidDigestException(objectKey, callContext.getRequestId());
-                    }
-                    out.close();
-                    S3ResponseHeader header = new S3ResponseHeaderImpl();
-                    header.setEtag(inQuotes(storageMd5base16));
-                    header.setDate(new Date(Files.getLastModifiedTime(obj).toMillis()));
-                    callContext.setResponseHeader(header);
-
-                    Files.createDirectories(meta.getParent());
-                    metaByte = writeMetaFile(meta, callContext, S3Constants.ETAG, inQuotes(storageMd5base16));
-                    Map<String,String> desMap = SerializationUtil.deserializeMap(metaByte);
-                    desMap.put("ETag",inQuotes(storageMd5base16));
-                    metaByte = SerializationUtil.serializeMap(desMap);
-                    //判断文件在链上是否存在，默认不存在
-                    boolean isFileExist = false;
-                    try {
-//                    ObjectId versinoId = new ObjectId(callContext.getParams().getAllParams().get("versionId"));
-                        if(securityEnabled.equals("true")) {
-                            YTClient client = YTClientMgr.getClient(publicKey);
-                            isFileExist = client.createObjectAccessor().isExistObject(bucketName,objectKey,null);
-                        } else {
-                            isFileExist = ObjectHandler.isExistObject(bucketName,objectKey,null);
-                        }
-
-                    } catch (ServiceException e) {
-                        e.printStackTrace();
-                    }
-                    // 如果文件不存在  将文件上传至超级节点
-                    String filePath = repoBaseUrl + "/" + bucketName+"/data/"+tempFileName;
-                    LOG.info("filePath===="+filePath);
-                    UploadObject uploadObject;
-                    if(securityEnabled.equals("true")){
-                        YTClient client = YTClientMgr.getClient(publicKey);
-                        uploadObject = client.createUploadObject(filePath);
-                        ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
-                    }else {
-                        uploadObject = new UploadObject(filePath);
-                        ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
-                    }
-                    if(isFileExist == false && contentLength == 0) {
-                        try {
-                            ObjectId VNU = new ObjectId(defaultVNU);
-                            if(securityEnabled.equals("true")) {
-                                YTClient client = YTClientMgr.getClient(publicKey);
-                                client.createObjectAccessor().createObject(bucketName, objectKey, VNU, metaByte);
-                            } else {
-                                ObjectHandler.createObject(bucketName, objectKey, VNU, metaByte);
-                            }
-
-                            LOG.info("[ "+objectKey +" ]"+ " uploaded successfully................");
-
-                        } catch (ServiceException e) {
-                            LOG.info(objectKey+"  upload failed.111",e);
-                            if(Files.exists(AESKyeObj)) {
-                                Files.delete(AESKyeObj);
-                            }
-
-                            e.printStackTrace();
-                        }
-                    }else if (isFileExist == false && contentLength > 0) {
-
-                        try {
-                            uploadObject.upload();
-                            if(securityEnabled.equals("true")) {
-                                YTClient client = YTClientMgr.getClient(publicKey);
-                                client.createObjectAccessor().createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
-                            }else {
-                                ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
-                            }
-
-                            LOG.info("[ "+objectKey +" ]"+ " uploaded successfully................");
-                            isFileExist = true;
-
-                            //腾讯云备份*****************************
-                            //备份到腾讯云
-                            if(!"false".equals(cosBackUp)) {
-                                LOG.info("SYNC UPLOAD,Start backup COS task..................");
-                                CosBackupService cosBackupService  = new CosBackupService();
-                                AyncFileMeta fileMeta = new AyncFileMeta();
-                                fileMeta.setBucketname(bucketName);
-                                fileMeta.setKey(objectKey);
-                                fileMeta.setAesPath(AESKyeObj.toString());
-                                if(securityEnabled.equals("true")){
-                                    fileMeta.setPublicKey(publicKey);
-                                }
-                                String etag = cosBackupService.uploadFile(fileMeta);
-                                LOG.info("etag coss====="+etag);
-                                LOG.info("SYNC UPLOAD,Complete backup COS task..................");
-                                try {
-                                    if(Files.exists(AESKyeObj)) {
-                                        Files.delete(AESKyeObj);
-                                    }
-
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                            //腾讯云备份*****************************
-                        } catch (Exception e) {
-                            LOG.info(objectKey + "  upload failed.222",e);
-                            if(!"false".equals(cosBackUp)) {
-                                if(Files.exists(AESKyeObj)) {
-                                    Files.delete(AESKyeObj);
-                                }
-                            }
-
-                            e.printStackTrace();
-                        }
-
-                    } else {
-                        //判断当前bucket是否开启了版本控制，根据版本控制状态决定是否允许上传同名文件
-                        Map<String,byte[]> map = null;
-                        try {
-                            if(securityEnabled.equals("true")) {
-                                YTClient client = YTClientMgr.getClient(publicKey);
-                                map = client.createBucketAccessor().getBucketByName(bucketName);
-                            } else {
-                                map = BucketHandler.getBucketByName(bucketName);
-                            }
-                        } catch (ServiceException e) {
-                            e.printStackTrace();
-                        }
-                        byte[] bucketMeta = map.get(bucketName);
-                        Map<String,String> bucketHeader = new HashMap<>();
-                        bucketHeader = SerializationUtil.deserializeMap(bucketMeta);
-                        String version_status = bucketHeader.get("version_status");
-
-                        if("Off".equals(version_status) || "OFF".equals(version_status) || version_status==null || "".equals(version_status)) {
-                            LOG.error("The file already exists on the chain or has a duplicate file name");
-                            throw new InternalErrorException(objectKey, callContext.getRequestId());
-                        } else if("Suspended ".equals(version_status) || "SUSPENDED".equals(version_status)) {
-                            LOG.error("Currently bucket versioning has been suspended");
-                            throw new InternalErrorException(objectKey, callContext.getRequestId());
-                        } else if("Enabled".equals(version_status) || "ENABLED".equals(version_status)) {
-                            //同名文件生成历史版本
-                            try {
-                                if(contentLength == 0) {
-                                    if(securityEnabled.equals("true")) {
-                                        YTClient client = YTClientMgr.getClient(publicKey);
-                                        client.createObjectAccessor().createObject(bucketName, objectKey, new ObjectId(defaultVNU), metaByte);
-                                    } else {
-                                        ObjectHandler.createObject(bucketName, objectKey, new ObjectId(defaultVNU), metaByte);
-                                    }
-                                    LOG.info("[ "+objectKey +" ]"+ " uploaded successfully................");
-                                } else {
-                                    uploadObject.upload();
-                                    if(securityEnabled.equals("true")){
-                                        YTClient client = YTClientMgr.getClient(publicKey);
-                                        client.createObjectAccessor().createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
-                                    } else {
-                                        ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
-                                    }
-                                    LOG.info("[ "+objectKey +" ]"+ " uploaded successfully................");
-                                }
-
-                            } catch (ServiceException e) {
-                                LOG.info(objectKey + "  upload failed.333",e);
-                                if(Files.exists(AESKyeObj)) {
-                                    Files.delete(AESKyeObj);
-                                }
-
-                                e.printStackTrace();
-                            }
-                        }
-                    }
-                }
-
-            } catch (IOException | NoSuchAlgorithmException | JAXBException e) {
-                LOG.error("internal error", e);
-                e.printStackTrace();
-            } catch (InterruptedException e) {
-                LOG.error("interrupted thread", e);
-                e.printStackTrace();
-            } finally {
-                try {
-                    unlock(metaBucket, tempFileName, callContext);
-                    //删除缓存文件
-                    LOG.info("Delete ******* CACHE FILE..........."+objectKey);
-                    Thread.sleep(60000);
-                    ProgressUtil.removeUploadObject(bucketName,objectKey);
-                    Files.delete(obj);
-                    Files.deleteIfExists(meta);
-
-                } catch (Exception e) {
+                } catch (NoSuchPaddingException e) {
+                    e.printStackTrace();
+                } catch (NoSuchAlgorithmException e) {
+                    e.printStackTrace();
+                } catch (InvalidKeyException e) {
+                    e.printStackTrace();
+                } catch (BadPaddingException e) {
+                    e.printStackTrace();
+                } catch (IllegalBlockSizeException e) {
                     e.printStackTrace();
                 }
-
             }
-
-
-            Map<String,String> header  = SerializationUtil.deserializeMap(metaByte);
-            S3Metadata s3Metadata = getMetaMessage(header);
             return new S3ObjectImpl(objectKey,
                     new Date(),
                     bucketName,
-                    Long.parseLong(header.get("contentLength")),
+                    callContext.getHeader().getContentLength(),
                     new S3UserImpl(),
-                    s3Metadata,
-                    null, s3Metadata.get(S3Constants.CONTENT_TYPE),
-                    s3Metadata.get(header.get("ETag")), s3Metadata.get(S3Constants.VERSION_ID), false, true);
+                    null,
+                    null,
+                    S3Constants.CONTENT_TYPE,
+                    inQuotes(storageMd5base16),
+                    S3Constants.VERSION_ID, false, true);
+        } else{
+            if ("on".equals(status_sync)) {
+                LOG.info("AYNC UPLOAD STARTING...........");
+                this.ayncFileUpload(callContext,bucketName,objectKey);
+                return null;
+            }else {
+                Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
+                Path metaBucket = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
+                if (!Files.exists(dataBucket)){
+                    try {
+                        Files.createDirectories(dataBucket);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                if(!Files.exists((metaBucket))) {
+                    try {
+                        Files.createDirectories(metaBucket);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                String tempFileName = UUID.randomUUID().toString();
+                Path meta = metaBucket.resolve(tempFileName + META_XML_EXTENSION);
+                Path obj = dataBucket.resolve(tempFileName);
+                Long contentLength = callContext.getHeader().getContentLength();
+                lock(metaBucket, tempFileName, S3Lock.LockType.write, callContext);
+                try (InputStream in = callContext.getContent()) {
+                    Files.createDirectories(obj.getParent());
+                    Files.createFile(obj);
 
+                    //腾讯云备份*****************************
+                    OutputStream aes = null;
+                    Path AESKyeObj=null;
+                    if(!"false".equals(cosBackUp)){
+                        String aesTmpObj = UUID.randomUUID().toString();
+                        AESKyeObj = dataBucket.resolve(aesTmpObj);
+                        Files.createFile(AESKyeObj);
+                        aes = Files.newOutputStream(AESKyeObj);
+                    }
+                    //腾讯云备份*****************************
+                    DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
+                    try (OutputStream out = Files.newOutputStream(obj)) {
+                        long bytesCopied = 0;
+                        //腾讯云备份******************
+                        try {
+                            bytesCopied = CosBackupService.copy(callContext,din,out,aes,cosBackUp);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                        if(!"false".equals(cosBackUp)){
+                            aes.flush();
+                            aes.close();
+                        }
+                        //腾讯云备份******************
+                        byte[] md5bytes = din.getMessageDigest().digest();
+                        String storageMd5base16 = Encoding.toHex(md5bytes);
+
+                        out.close();
+                        S3ResponseHeader header = new S3ResponseHeaderImpl();
+                        header.setEtag(inQuotes(storageMd5base16));
+                        callContext.setResponseHeader(header);
+
+                        Files.createDirectories(meta.getParent());
+                        metaByte = writeMetaFile(meta, callContext, S3Constants.ETAG, inQuotes(storageMd5base16));
+                        Map<String,String> desMap = SerializationUtil.deserializeMap(metaByte);
+                        desMap.put("ETag",inQuotes(storageMd5base16));
+                        metaByte = SerializationUtil.serializeMap(desMap);
+                        //判断文件在链上是否存在，默认不存在
+                        boolean isFileExist = false;
+                        try {
+//                    ObjectId versinoId = new ObjectId(callContext.getParams().getAllParams().get("versionId"));
+                            if(securityEnabled.equals("true")) {
+                                YTClient client = YTClientMgr.getClient(publicKey);
+                                isFileExist = client.createObjectAccessor().isExistObject(bucketName,objectKey,null);
+                            } else {
+                                isFileExist = ObjectHandler.isExistObject(bucketName,objectKey,null);
+                            }
+                        } catch (ServiceException e) {
+                            e.printStackTrace();
+                        }
+                        // 如果文件不存在  将文件上传至超级节点
+                        String filePath = repoBaseUrl + "/" + bucketName+"/data/"+tempFileName;
+                        LOG.info("filePath===="+filePath);
+                        UploadObject uploadObject;
+                        if(securityEnabled.equals("true")){
+                            YTClient client = YTClientMgr.getClient(publicKey);
+                            uploadObject = client.createUploadObject(filePath);
+                            ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
+                        }else {
+                            uploadObject = new UploadObject(filePath);
+                            ProgressUtil.putUploadObject(bucketName,objectKey,uploadObject);
+                        }
+                        if(isFileExist == false && contentLength == 0) {
+                            try {
+                                ObjectId VNU = new ObjectId(defaultVNU);
+                                if(securityEnabled.equals("true")) {
+                                    YTClient client = YTClientMgr.getClient(publicKey);
+                                    client.createObjectAccessor().createObject(bucketName, objectKey, VNU, metaByte);
+                                } else {
+                                    ObjectHandler.createObject(bucketName, objectKey, VNU, metaByte);
+                                }
+
+                                LOG.info("[ "+objectKey +" ]"+ " uploaded successfully................");
+
+                            } catch (ServiceException e) {
+                                LOG.info(objectKey+"  upload failed.111",e);
+                                if(Files.exists(AESKyeObj)) {
+                                    Files.delete(AESKyeObj);
+                                }
+                                e.printStackTrace();
+                            }
+                        }else if (isFileExist == false && contentLength > 0) {
+                            try {
+                                uploadObject.upload();
+                                if(securityEnabled.equals("true")) {
+                                    YTClient client = YTClientMgr.getClient(publicKey);
+                                    client.createObjectAccessor().createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
+                                }else {
+                                    ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
+                                }
+
+                                LOG.info("[ "+objectKey +" ]"+ " uploaded successfully................");
+                                isFileExist = true;
+
+                                //腾讯云备份*****************************
+                                //备份到腾讯云
+                                if(!"false".equals(cosBackUp)) {
+                                    LOG.info("SYNC UPLOAD,Start backup COS task..................");
+                                    CosBackupService cosBackupService  = new CosBackupService();
+                                    AyncFileMeta fileMeta = new AyncFileMeta();
+                                    fileMeta.setBucketname(bucketName);
+                                    fileMeta.setKey(objectKey);
+                                    fileMeta.setAesPath(AESKyeObj.toString());
+                                    if(securityEnabled.equals("true")){
+                                        fileMeta.setPublicKey(publicKey);
+                                    }
+                                    String etag = cosBackupService.uploadFile(fileMeta);
+                                    LOG.info("etag coss====="+etag);
+                                    LOG.info("SYNC UPLOAD,Complete backup COS task..................");
+                                    try {
+                                        if(Files.exists(AESKyeObj)) {
+                                            Files.delete(AESKyeObj);
+                                        }
+
+                                    } catch (IOException e) {
+                                        e.printStackTrace();
+                                    }
+                                }
+                                //腾讯云备份*****************************
+                            } catch (Exception e) {
+                                LOG.info(objectKey + "  upload failed.222",e);
+                                if(!"false".equals(cosBackUp)) {
+                                    if(Files.exists(AESKyeObj)) {
+                                        Files.delete(AESKyeObj);
+                                    }
+                                }
+                                e.printStackTrace();
+                            }
+                        } else {
+                            //判断当前bucket是否开启了版本控制，根据版本控制状态决定是否允许上传同名文件
+                            Map<String,byte[]> map = null;
+                            try {
+                                if(securityEnabled.equals("true")) {
+                                    YTClient client = YTClientMgr.getClient(publicKey);
+                                    map = client.createBucketAccessor().getBucketByName(bucketName);
+                                } else {
+                                    map = BucketHandler.getBucketByName(bucketName);
+                                }
+                            } catch (ServiceException e) {
+                                e.printStackTrace();
+                            }
+                            byte[] bucketMeta = map.get(bucketName);
+                            Map<String,String> bucketHeader = new HashMap<>();
+                            bucketHeader = SerializationUtil.deserializeMap(bucketMeta);
+                            String version_status = bucketHeader.get("version_status");
+
+                            if("Off".equals(version_status) || "OFF".equals(version_status) || version_status==null || "".equals(version_status)) {
+                                LOG.error("The file already exists on the chain or has a duplicate file name");
+                                throw new InternalErrorException(objectKey, callContext.getRequestId());
+                            } else if("Suspended ".equals(version_status) || "SUSPENDED".equals(version_status)) {
+                                LOG.error("Currently bucket versioning has been suspended");
+                                throw new InternalErrorException(objectKey, callContext.getRequestId());
+                            } else if("Enabled".equals(version_status) || "ENABLED".equals(version_status)) {
+                                //同名文件生成历史版本
+                                try {
+                                    if(contentLength == 0) {
+                                        if(securityEnabled.equals("true")) {
+                                            YTClient client = YTClientMgr.getClient(publicKey);
+                                            client.createObjectAccessor().createObject(bucketName, objectKey, new ObjectId(defaultVNU), metaByte);
+                                        } else {
+                                            ObjectHandler.createObject(bucketName, objectKey, new ObjectId(defaultVNU), metaByte);
+                                        }
+                                        LOG.info("[ "+objectKey +" ]"+ " uploaded successfully................");
+                                    } else {
+                                        uploadObject.upload();
+                                        if(securityEnabled.equals("true")){
+                                            YTClient client = YTClientMgr.getClient(publicKey);
+                                            client.createObjectAccessor().createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
+                                        } else {
+                                            ObjectHandler.createObject(bucketName, objectKey, uploadObject.getVNU(), metaByte);
+                                        }
+                                        LOG.info("[ "+objectKey +" ]"+ " uploaded successfully................");
+                                    }
+
+                                } catch (ServiceException e) {
+                                    LOG.info(objectKey + "  upload failed.333",e);
+                                    if(Files.exists(AESKyeObj)) {
+                                        Files.delete(AESKyeObj);
+                                    }
+                                    e.printStackTrace();
+                                }
+                            }
+                        }
+                    }
+                } catch (IOException | NoSuchAlgorithmException | JAXBException e) {
+                    LOG.error("internal error", e);
+                    e.printStackTrace();
+                } catch (InterruptedException e) {
+                    LOG.error("interrupted thread", e);
+                    e.printStackTrace();
+                } finally {
+                    try {
+                        unlock(metaBucket, tempFileName, callContext);
+                        //删除缓存文件
+                        LOG.info("Delete ******* CACHE FILE..........."+objectKey);
+                        Thread.sleep(60000);
+                        ProgressUtil.removeUploadObject(bucketName,objectKey);
+                        Files.delete(obj);
+                        Files.deleteIfExists(meta);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+                Map<String,String> header  = SerializationUtil.deserializeMap(metaByte);
+                S3Metadata s3Metadata = getMetaMessage(header);
+                return new S3ObjectImpl(objectKey,
+                        new Date(),
+                        bucketName,
+                        Long.parseLong(header.get("contentLength")),
+                        new S3UserImpl(),
+                        s3Metadata,
+                        null, s3Metadata.get(S3Constants.CONTENT_TYPE),
+                        s3Metadata.get(header.get("ETag")), s3Metadata.get(S3Constants.VERSION_ID), false, true);
+
+            }
         }
-
     }
 
     private void ayncFileUpload(S3CallContext callContext, String bucketName, String objectKey) {
@@ -743,9 +838,7 @@ public class RepositoryImpl implements S3Repository {
                 e.printStackTrace();
             }
         }
-
         String tempFileName = UUID.randomUUID().toString();
-
         //腾讯云备份*************
         OutputStream aes=null;
         Path aesFilePath = null;
@@ -760,21 +853,15 @@ public class RepositoryImpl implements S3Repository {
                 e.printStackTrace();
             }
         }
-
         //腾讯云备份*************
-
         Path filePath = Paths.get(repoBaseUrl+"/"+bucketName+"/"+tempFileName+".dat");
         Path filePathXML = Paths.get(repoBaseUrl+"/"+"xml/"+tempFileName+".xml");
-
-
         try (InputStream in = callContext.getContent()) {
             DigestInputStream din = new DigestInputStream(in, MessageDigest.getInstance("MD5"));
             OutputStream out = Files.newOutputStream(filePath);
-
             //腾讯云备份*************
             long bytesCopied = CosBackupService.copy(callContext,din,out,aes,cosBackUp);
             //腾讯云备份*************
-
             byte[] md5bytes = din.getMessageDigest().digest();
 
             String storageMd5base16 = Encoding.toHex(md5bytes);
@@ -782,7 +869,7 @@ public class RepositoryImpl implements S3Repository {
             S3ResponseHeader header = new S3ResponseHeaderImpl();
             String etag = inQuotes(storageMd5base16);
             header.setEtag(inQuotes(storageMd5base16));
-            header.setDate(new Date(Files.getLastModifiedTime(filePath).toMillis()));
+//            header.setDate(new Date(Files.getLastModifiedTime(filePath).toMillis()));
             callContext.setResponseHeader(header);
             out.close();
             in.close();
@@ -791,10 +878,7 @@ public class RepositoryImpl implements S3Repository {
             if(!"false".equals(cosBackUp)){
                 aes.close();
             }
-
             //腾讯云备份*************
-
-
             AyncFileMeta fileMeta = new AyncFileMeta();
             fileMeta.setKey(objectKey);
             fileMeta.setPath(filePath.toString());
@@ -836,17 +920,12 @@ public class RepositoryImpl implements S3Repository {
         int bytesRead;
         while((bytesRead = in.read(buffer)) != -1) {
             out.write(buffer, 0, bytesRead);
-
-
             //腾讯云备份*************
             if(!"false".equals(cosBackUp)) {
                 byte[] data1 = coder.update(buffer,0,bytesRead);
                 aes.write(data1);
             }
-
             //腾讯云备份*************
-
-
 
             byteCount += (long)bytesRead;
             if(AyncUploadSenderPool.isFull()) {
@@ -1635,19 +1714,11 @@ public class RepositoryImpl implements S3Repository {
             if(fileMetaMsgs.size() > 0) {
                 for(FileMetaMsg fileMetaMsg : fileMetaMsgs) {
                     byte[] meta = fileMetaMsg.getMeta();
+//                    LOG.info("meta size : "+meta.length);
+                    ObjectId fileId = fileMetaMsg.getFileId();
                     Map<String, String> header = SerializationUtil.deserializeMap(meta);
                     S3Metadata s3Metadata = getMetaMessage(header);
-                    String lastModified = header.get("x-amz-date");
-                    if(lastModified == null) {
-                        lastModified = header.get("date");
-                    }
-                    Date date = null;
-                    try{
-                        long ss =Long.parseLong(lastModified);
-                        date = new Date(ss);
-                    }catch (Exception e) {
-                        date = new Date(lastModified);
-                    }
+                    Date date = fileId.getDate();
                     String etag = header.get("ETag");
                     if(etag ==null) {
                         header.put("ETag",S3Constants.ETAG);

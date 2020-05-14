@@ -47,9 +47,7 @@ public class AyncSender extends Thread {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-
     }
-
 
     @Override
     public void run() {
@@ -65,18 +63,18 @@ public class AyncSender extends Thread {
             }
             if(req !=null) {
                 LOG.info("path:::" + req.getPath());
-
                 byte[] bs = req.getMeta();
                 UploadObject uploadObject;
-
                 Map<String,String> header;
-
                 header = SerializationUtil.deserializeMap(bs);
                 String fileLength = header.get("contentLength");
                 PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
                 String securityEnabled = p.readProperty("s3server.securityEnabled");
+                Map<String, String> map = SerializationUtil.deserializeMap(bs);
+                map.remove("cosMeta");
+                map.remove("xmlMeta");
+                bs = SerializationUtil.serializeMap(map);
                 String new_publicKey = null;
-//                LOG.info("cos is "+"cos".equals(req.getPath()) + "!!!!!!");
                 try {
                     if("cos".equals(req.getPath())) {
                         //执行腾讯云备份
@@ -90,7 +88,9 @@ public class AyncSender extends Thread {
                             LOG.info("BACKUP COMPLETE  etag==="+etag);
                             LOG.info("Delete ******* CACHE FILE.....1......");
                             Path aesPath = Paths.get(req.getAesPath());
-                            Files.delete(aesPath);
+                            if(Files.exists(aesPath)){
+                                Files.delete(aesPath);
+                            }
                         }
 
                         String cosMeta = header.get("cosMeta");
@@ -112,8 +112,6 @@ public class AyncSender extends Thread {
                             Path obj = Paths.get(req.getPath());
                             String xmlMeta = header.get("xmlMeta");
                             Path xml = Paths.get(xmlMeta);
-                            LOG.info("xml======="+xml);
-                            LOG.info("obj======="+obj);
                             if(Files.exists(obj)) {
                                 Files.delete(obj);
                             }
@@ -130,6 +128,8 @@ public class AyncSender extends Thread {
                                 uploadObject = client.createUploadObject(req.getPath());
                                 ProgressUtil.putUploadObject(req.getBucketname(),req.getKey(),uploadObject);
                                 uploadObject.upload();
+                                LOG.info("metadata size==="+bs.length);
+//                                Map<String,String> ss = SerializationUtil.deserializeMap(bs);
                                 client.createObjectAccessor().createObject(req.getBucketname(), req.getKey(), uploadObject.getVNU(), bs);
                             } else {
                                 uploadObject = new UploadObject(req.getPath());

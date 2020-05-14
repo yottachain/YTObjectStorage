@@ -389,7 +389,7 @@ public class UserController {
     @RequestMapping(value = "/get_version",method = RequestMethod.GET)
     @ResponseBody
     public String getVersion(HttpServletRequest request, HttpServletResponse response) {
-        String version_info = "{\"version\":\"1.0.0.13\",\"Date\":\"2020-04-08\"}";
+        String version_info = "{\"version\":\"1.0.0.14\",\"Date\":\"2020-05-15\"}";
         response.setHeader("Access-Control-Allow-Origin","*");
         return version_info;
     }
@@ -572,6 +572,7 @@ public class UserController {
                 } else {
                     listUser.add(yottaUser);
                     try {
+                        LOG.info("username:::"+yottaUser.getUsername() + " ,privateKey==="+yottaUser.getPrivateKey());
                         YTClientMgr.newInstance(yottaUser.getUsername(),yottaUser.getPrivateKey());
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -583,7 +584,6 @@ public class UserController {
         }
 
         LOG.info("Batch import users completed, the number of successful import users is " + listUser.size());
-//        return Ret.ok().setMsg("Batch import users completed, the number of successful import users is " + listUser.size());
         return Ret.ok().setData(listUser).setMsg("Batch import users completed, the number of successful import users is " + listUser.size());
     }
 

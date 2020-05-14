@@ -61,7 +61,6 @@ public class AyncUploadSenderPool {
     }
 
     public final void start() {
-        //程序稳定后 队列长度可配置
         queue = new ArrayBlockingQueue(queueSize);
         int count = syncCount;
         senders = new AyncSender[count];
@@ -80,12 +79,14 @@ public class AyncUploadSenderPool {
 
     public static void putAyncFileMeta(AyncFileMeta req)  {
         try {
-//            req.save();
             LOG.info("ADD QUEUE..........");
-            newInstance().queue.put(req);
+            while(!newInstance().queue.offer(req,30,TimeUnit.SECONDS)) {
+                LOG.warn("QUEUE IS FULL...");
+            }
         } catch (InterruptedException  ex) {
             LOG.info("err::",ex);
         }
+
     }
 
     public static boolean addAyncFileMeta(AyncFileMeta req) {

@@ -7,6 +7,8 @@ import com.qcloud.cos.auth.COSCredentials;
 import com.qcloud.cos.exception.CosClientException;
 import com.qcloud.cos.exception.CosServiceException;
 import com.qcloud.cos.model.*;
+import com.qcloud.cos.model.lifecycle.LifecycleFilter;
+import com.qcloud.cos.model.lifecycle.LifecyclePrefixPredicate;
 import com.qcloud.cos.region.Region;
 import com.qcloud.cos.transfer.TransferManager;
 import com.qcloud.cos.transfer.TransferManagerConfiguration;
@@ -25,6 +27,7 @@ import de.mc.ladon.s3server.jaxb.entities.Part;
 import de.mindconsulting.s3storeboot.util.AESDecryptInputStream;
 import de.mindconsulting.s3storeboot.util.CosClientUtil;
 import net.sf.json.JSONObject;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.log4j.Logger;
 import org.springframework.context.annotation.Configuration;
 
@@ -89,7 +92,11 @@ public class CosBackupService {
 //
 //    }
 
-
+    public static String uploadSmallObject(String bucketName,String key,InputStream in){
+        COSClient cos = CosBackupService.getClient();
+        PutObjectResult result = cos.putObject(bucketName,key,in,new ObjectMetadata());
+        return result.getETag();
+    }
 
     public String uploadFile(AyncFileMeta req) {
         String jsonStr = null;
@@ -317,6 +324,45 @@ public class CosBackupService {
         }
     }
 
+    public  void updateCosBucketLifecycle(){
+        // 规则2  20天后沉降到低频，一年后删除
+        List<BucketLifecycleConfiguration.Rule> rules = new ArrayList<BucketLifecycleConfiguration.Rule>();
+        BucketLifecycleConfiguration.Rule standardIaRule = new BucketLifecycleConfiguration.Rule();
+        standardIaRule.setId("standard_ia transition");
+        standardIaRule.setFilter(new LifecycleFilter(new LifecyclePrefixPredicate("")));
+        List<BucketLifecycleConfiguration.Transition> standardIaTransitions = new ArrayList<BucketLifecycleConfiguration.Transition>();
+        BucketLifecycleConfiguration.Transition standardTransition = new BucketLifecycleConfiguration.Transition();
+        standardTransition.setDays(1);
+        standardTransition.setStorageClass(StorageClass.Standard_IA.toString());
+        standardIaTransitions.add(standardTransition);
+        standardIaRule.setTransitions(standardIaTransitions);
+        standardIaRule.setStatus(BucketLifecycleConfiguration.ENABLED);
+        rules.add(standardIaRule);
+
+// 生成 bucketLifecycleConfiguration
+        BucketLifecycleConfiguration bucketLifecycleConfiguration = new BucketLifecycleConfiguration();
+        bucketLifecycleConfiguration.setRules(rules);
+
+// 存储桶的命名格式为 BucketName-APPID
+        COSClient cosClient = getClient();
+//        for(int i=0;i<=180;i++) {
+//            String bucketName = "yotta"+ i + "-1258989317";
+//            LOG.info("bucketname:"+bucketName);
+//            SetBucketLifecycleConfigurationRequest setBucketLifecycleConfigurationRequest =
+//                    new SetBucketLifecycleConfigurationRequest(bucketName, bucketLifecycleConfiguration);
+//            // 设置生命周期
+//            cosClient.setBucketLifecycleConfiguration(setBucketLifecycleConfigurationRequest);
+//        }
+        String bucketName = "uploadtest-114-1258989317";
+        SetBucketLifecycleConfigurationRequest setBucketLifecycleConfigurationRequest =
+                new SetBucketLifecycleConfigurationRequest(bucketName, bucketLifecycleConfiguration);
+        // 设置生命周期
+        cosClient.setBucketLifecycleConfiguration(setBucketLifecycleConfigurationRequest);
+        LOG.info("设置bucket为低频存储完成");
+//        String bucketName = "upload-yotta-1258989317";
+
+    }
+
     public static long copy(S3CallContext callContext,InputStream in, OutputStream out,OutputStream aes,String cosBackUp) throws Exception {
         long byteCount = 0;
         byte[] buffer = new byte[131072];
@@ -379,19 +425,25 @@ public class CosBackupService {
         return parts;
     }
 
-    public static void main(String []args) {
-        CosBackupService service = new CosBackupService();
-        for(int i=0;i<=555;i++) {
-            String prefix = i + "_";
-            LOG.info("开始迁移用户: " + i + " 的数据") ;
-            try{
-                service.copyObject(prefix);
-            }catch (Exception e) {
-                LOG.info("ERR:",e);
-            }
+    public static void main(String args[]) {
 
-
-        }
     }
+
+//迁移用户和改为低频存储
+//    public static void main(String []args) {
+//        CosBackupService service = new CosBackupService();
+//        service.updateCosBucketLifecycle();
+//        for(int i=0;i<=555;i++) {
+//            String prefix = i + "_";
+//            LOG.info("开始迁移用户: " + i + " 的数据") ;
+//            try{
+//                service.copyObject(prefix);
+//            }catch (Exception e) {
+//                LOG.info("ERR:",e);
+//            }
+
+
+//        }
+//    }
 
 }
