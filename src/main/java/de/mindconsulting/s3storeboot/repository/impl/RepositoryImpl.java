@@ -806,8 +806,12 @@ public class RepositoryImpl implements S3Repository {
                         LOG.info("Delete ******* CACHE FILE..........."+objectKey);
                         Thread.sleep(60000);
                         ProgressUtil.removeUploadObject(bucketName,objectKey);
-                        Files.delete(obj);
-                        Files.deleteIfExists(meta);
+                        if(Files.exists(obj)){
+                            Files.delete(obj);
+                        }
+                        if(Files.exists(meta)){
+                            Files.delete(meta);
+                        }
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -1107,8 +1111,12 @@ public class RepositoryImpl implements S3Repository {
                     || md5 != null && !md5.equals(storageMd5base64)
                     || sha256!=null && !sha256.equals(storeSha256Base16)) {
                 try {
-                    Files.delete(obj);
-                    Files.deleteIfExists(meta);
+                    if(Files.exists(obj)){
+                        Files.delete(obj);
+                    }
+                    if(Files.exists(meta)) {
+                        Files.delete(meta);
+                    }
                 } catch (IOException e1) {
                     e1.printStackTrace();
                 }
@@ -1358,12 +1366,18 @@ public class RepositoryImpl implements S3Repository {
                         LOG.info("aesEtag:::"+aesEtag);
                     }
                     //备份到腾讯云*****************
-                    Files.deleteIfExists(meta);
-                    Files.deleteIfExists(obj);
+                    if(Files.exists(meta)){
+                        Files.delete(meta);
+                    }
+                    if(Files.exists(obj)){
+                        Files.delete(obj);
+                    }
 
                     //备份到腾讯云*****************
                     Path aesPath = Paths.get(aesFilePath);
-                    Files.deleteIfExists(aesPath);
+                    if(Files.exists(aesPath)){
+                        Files.delete(aesPath);
+                    }
                     LOG.info("BACKUP COMPLETE，etag:::"+etag);
                     //备份到腾讯云*****************
                 } catch (Exception e) {
