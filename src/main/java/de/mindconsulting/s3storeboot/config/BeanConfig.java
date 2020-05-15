@@ -139,9 +139,6 @@ public class BeanConfig {
             }catch (Exception e) {
                 LOG.info("Multiuser initialization is not a significant error...");
             }
-
-
-
         }else {
             String cert_path = dirctory + "/"+"yts3.conf";
 
@@ -149,7 +146,6 @@ public class BeanConfig {
 
             if(!"".equals(cert)) {
                 JSONObject jsonStr = JSONObject.fromObject(cert);
-
                 String KUSp = jsonStr.getString("privateKey");
                 String username = jsonStr.getString("username");
                 init(KUSp,username);
@@ -172,7 +168,6 @@ public class BeanConfig {
     }
 
     private String readCert(String propertiesPath) {
-//        String cert_path = System.getProperty("cert", "conf/cert");
         String cert_path = dirctory +"/"+ "cert";
         Path path = Paths.get(cert_path);
         if (!Files.exists(path)) {
@@ -212,7 +207,7 @@ public class BeanConfig {
     }
 
     private  void init(String private_key,String user_name) throws IOException {
-
+        LOG.info("username:"+user_name + " ,privateKey:"+private_key);
         Configurator cfg = new Configurator();
 
 //        cfg.setTmpFilePath("");
@@ -248,9 +243,6 @@ public class BeanConfig {
                 .allowedOrigins("*")
                 .allowCredentials(true);
     }
-
-
-
 
     @Bean
     @ConditionalOnProperty(value = "s3server.loggingEnabled" , havingValue = "true")

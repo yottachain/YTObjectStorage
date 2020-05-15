@@ -39,9 +39,10 @@ public class AyncLoader extends Thread {
 //        Path syncDir = Paths.get(SYNC_DIR+"/"+"xml");
 
         String[] objectList = new File(SYNC_DIR+"/"+"xml").list();
+        String[] xmlObjectList = new File(SYNC_DIR + "/cos_xml").list();
         String xmlPath = SYNC_DIR + "/" + "xml";
         String cosPath = SYNC_DIR + "/" + "cos_xml";
-        if(objectList == null) {
+        if(objectList == null && xmlObjectList == null) {
             return;
         }
         if(objectList.length > 0) {
@@ -56,12 +57,12 @@ public class AyncLoader extends Thread {
                 LOG.info("******************************");
 
             }
-            if("on".equals(cosBackUp)) {
+            if(!"false".equals(cosBackUp)) {
                 addAyncPool(xmlPath,cosPath);
             }
 
         } else {
-            if("on".equals(cosBackUp)) {
+            if(!"false".equals(cosBackUp)) {
                 addAyncPool(xmlPath,cosPath);
             }
         }
