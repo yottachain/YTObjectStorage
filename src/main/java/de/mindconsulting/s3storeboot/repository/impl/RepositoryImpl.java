@@ -37,6 +37,7 @@ import de.mindconsulting.s3storeboot.service.CosBackupService;
 import de.mindconsulting.s3storeboot.util.ProgressUtil;
 import de.mindconsulting.s3storeboot.util.PropertiesUtil;
 import de.mindconsulting.s3storeboot.util.S3Lock;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.log4j.Logger;
 import org.bson.types.ObjectId;
 import org.w3c.dom.Document;
@@ -427,6 +428,17 @@ public class RepositoryImpl implements S3Repository {
         }
     }
 
+    private Map<String,String> readHeaderInfo(S3CallContext callContext,String... additional){
+        Map<String, String> header = callContext.getHeader().getFullHeader();
+        header.put("contentLength",callContext.getHeader().getContentLength().toString());
+        if (additional.length > 0 && additional.length % 2 == 0) {
+            for (int i = 0; i < additional.length; i = i + 2) {
+                header.put(additional[i], additional[i + 1]);
+            }
+        }
+        return header;
+    }
+
     @Override
     public S3Object createObject(S3CallContext callContext, String bucketName, String objectKey) {
         String publicKey = null;
@@ -434,7 +446,7 @@ public class RepositoryImpl implements S3Repository {
         PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
         String securityEnabled = p.readProperty("s3server.securityEnabled");
         long allowMaxSize = Long.parseLong(p.readProperty("s3server.allowMaxSize"));
-        LOG.info("文件大小："+callContext.getHeader().getContentLength());
+        LOG.info("File size ："+callContext.getHeader().getContentLength());
         if(securityEnabled.equals("true")) {
             publicKey = callContext.getUser().getPublicKey().substring(callContext.getUser().getPublicKey().indexOf("YTA")+3);
         }
@@ -465,9 +477,15 @@ public class RepositoryImpl implements S3Repository {
         }
         //如果文件大小小于allowMaxSize,则不写缓存
         if(callContext.getHeader().getContentLength() < allowMaxSize && callContext.getHeader().getContentLength() > 0) {
+
+
             DigestInputStream din = null;
+            byte[] md5bytes = new byte[0];
             try {
                 din = new DigestInputStream(callContext.getContent(), MessageDigest.getInstance("MD5"));
+                md5bytes = din.getMessageDigest().digest();
+
+//                din.close();
             } catch (IOException e) {
                 e.printStackTrace();
             } catch (NoSuchAlgorithmException e) {
@@ -481,13 +499,16 @@ public class RepositoryImpl implements S3Repository {
                 while ((rc = callContext.getContent().read(buff, 0, 100)) > 0) {
                     swapStream.write(buff, 0, rc);
                 }
+                din.close();
+                swapStream.close();
             }catch (IOException e) {
                 e.printStackTrace();
             }
 
             byte[] in_b = swapStream.toByteArray();
 
-            byte[] md5bytes = din.getMessageDigest().digest();
+
+
             String storageMd5base16 = Encoding.toHex(md5bytes);
             Map<String,String> header = new HashMap<>();
 
@@ -568,15 +589,31 @@ public class RepositoryImpl implements S3Repository {
                     e.printStackTrace();
                 }
             }
+            LOG.info("[ " + objectKey + " ]UPLOAD SUCCESS !");
+
+            Map<String,String> aa = readHeaderInfo(callContext);
+            String x_amz_meta_s3cmd_attrs = aa.get("x-amz-meta-s3cmd-attrs");
+
+            if(StringUtils.isNotEmpty(x_amz_meta_s3cmd_attrs)){
+                int strStartIndex = x_amz_meta_s3cmd_attrs.indexOf("md5:");
+                int strEndIndex = x_amz_meta_s3cmd_attrs.indexOf("/mode");
+                storageMd5base16 = x_amz_meta_s3cmd_attrs.substring(strStartIndex+4,strEndIndex);
+            }
+            aa.put("ETag",inQuotes(storageMd5base16));
+            S3ResponseHeader s3ResponseHeader = new S3ResponseHeaderImpl();
+            s3ResponseHeader.setEtag(storageMd5base16);
+            callContext.setResponseHeader(s3ResponseHeader);
+
+            S3Metadata metadata = getMetaMessage(aa);
             return new S3ObjectImpl(objectKey,
                     new Date(),
                     bucketName,
                     callContext.getHeader().getContentLength(),
                     new S3UserImpl(),
-                    null,
+                    metadata,
                     null,
                     S3Constants.CONTENT_TYPE,
-                    inQuotes(storageMd5base16),
+                    metadata.get(aa.get("ETag")),
                     S3Constants.VERSION_ID, false, true);
         } else{
             if ("on".equals(status_sync)) {
@@ -584,6 +621,7 @@ public class RepositoryImpl implements S3Repository {
                 this.ayncFileUpload(callContext,bucketName,objectKey);
                 return null;
             }else {
+
                 Path dataBucket = Paths.get(repoBaseUrl, bucketName, DATA_FOLDER);
                 Path metaBucket = Paths.get(repoBaseUrl, bucketName, META_FOLDER);
                 if (!Files.exists(dataBucket)){
@@ -605,6 +643,7 @@ public class RepositoryImpl implements S3Repository {
                 Path obj = dataBucket.resolve(tempFileName);
                 Long contentLength = callContext.getHeader().getContentLength();
                 lock(metaBucket, tempFileName, S3Lock.LockType.write, callContext);
+
                 try (InputStream in = callContext.getContent()) {
                     Files.createDirectories(obj.getParent());
                     Files.createFile(obj);
@@ -635,6 +674,7 @@ public class RepositoryImpl implements S3Repository {
                         //腾讯云备份******************
                         byte[] md5bytes = din.getMessageDigest().digest();
                         String storageMd5base16 = Encoding.toHex(md5bytes);
+
 
                         out.close();
                         S3ResponseHeader header = new S3ResponseHeaderImpl();
