@@ -3,7 +3,7 @@ package de.mindconsulting.s3storeboot.config;
 import com.s3.user.controller.sync.task.AyncUploadSenderPool;
 import com.ytfs.client.ClientInitor;
 import com.ytfs.client.Configurator;
-import com.ytfs.client.v2.YTClient;
+import com.ytfs.client.Version;
 import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.codec.AESCoder;
 import com.ytfs.common.codec.KeyStoreCoder;
@@ -109,6 +109,7 @@ public class BeanConfig {
 
     @Bean
     ServletRegistrationBean s3Registration(S3ServletConfiguration config, S3Repository repository) throws IOException {
+        Version.setVersionID("1.0.0.14");
         if(securityEnabled.equals("true")) {
             String certList = dirctory + "/" + "cert.list";
             Path path = Paths.get(certList);
@@ -209,6 +210,7 @@ public class BeanConfig {
     private  void init(String private_key,String user_name) throws IOException {
         LOG.info("username:"+user_name + " ,privateKey:"+private_key);
         Configurator cfg = new Configurator();
+
 
 //        cfg.setTmpFilePath("");
         cfg.setKUSp(private_key);

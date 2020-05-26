@@ -6,8 +6,8 @@ import com.s3.user.controller.sync.task.SyncNotice;
 import com.ytfs.client.ClientInitor;
 import com.ytfs.client.Configurator;
 import com.ytfs.client.LocalInterface;
+import com.ytfs.client.Version;
 import com.ytfs.client.s3.ObjectHandler;
-import com.ytfs.client.v2.YTClient;
 import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.ServiceException;
 import com.ytfs.common.codec.AESCoder;
@@ -200,6 +200,7 @@ public class UserController {
     @RequestMapping(value = "/insertUser",method = RequestMethod.POST)
     @ResponseBody
     public Ret addUser(HttpServletRequest request,HttpServletResponse response) {
+        Version.setVersionID("1.0.0.14");
         response.setHeader("Access-Control-Allow-Origin","*");
         String privateKey = request.getParameter("privateKey");
         String username = request.getParameter("username");
@@ -364,6 +365,7 @@ public class UserController {
 
     //用户注册成功后初始化
     private  void init(String KUSp,String username) throws IOException {
+        Version.setVersionID("1.0.0.14");
         Configurator cfg = new Configurator();
         cfg.setKUSp(KUSp);
         cfg.setUsername(username);
@@ -521,6 +523,7 @@ public class UserController {
     @RequestMapping(value = "/importUsers",method = RequestMethod.POST)
     @ResponseBody
     public Ret importUsers(HttpServletRequest request,HttpServletResponse response) {
+        Version.setVersionID("1.0.0.14");
         response.setHeader("Access-Control-Allow-Origin","*");
         List<YottaUser> users = new ArrayList<>();
         Workbook wb = null; //拿到文件
@@ -563,7 +566,6 @@ public class UserController {
         }
         List<YottaUser> listUser = new ArrayList<>();
         if(users.size() > 0) {
-
             for(YottaUser yottaUser : users){
                 boolean flag = this.validateUser(yottaUser);
                 if(!flag) {
