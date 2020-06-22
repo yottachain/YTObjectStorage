@@ -6,7 +6,6 @@ import com.qcloud.cos.COSClient;
 import com.qcloud.cos.model.COSObject;
 import com.qcloud.cos.model.COSObjectInputStream;
 import com.qcloud.cos.model.GetObjectRequest;
-import com.qcloud.cos.model.ObjectMetadata;
 import com.s3.user.controller.sync.task.AyncFileMeta;
 import com.s3.user.controller.sync.task.AyncUploadSenderPool;
 import com.ytfs.client.BackupCaller;
@@ -221,11 +220,19 @@ public class RepositoryImpl implements S3Repository {
             String nodePath = "/VersioningConfiguration/Status";
             String version_status = this.getNodeValue(doc,nodePath);
             Map<String,byte[]> map = new HashMap<>();
-            try {
-                map = BucketHandler.getBucketByName(bucketName);
-            } catch (ServiceException e) {
-                e.printStackTrace();
+            if(securityEnabled.equals("true")) {
+                String publicKey = callContext.getUser().getPublicKey();
+                String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                YTClient ytClient = YTClientMgr.getClient(new_publicKey);
+                map = ytClient.createBucketAccessor().getBucketByName(bucketName);
+            }else {
+                try {
+                    map = BucketHandler.getBucketByName(bucketName);
+                } catch (ServiceException e) {
+                    e.printStackTrace();
+                }
             }
+
             byte[] bytes = map.get(bucketName);
             Map<String,String> header = SerializationUtil.deserializeMap(bytes);
             String status = header.get("version_status");
@@ -233,7 +240,16 @@ public class RepositoryImpl implements S3Repository {
                 header.put("version_status",version_status);
                 bytes = SerializationUtil.serializeMap(header);
                 try {
-                    BucketHandler.updateBucket(bucketName,bytes);
+
+                    if(securityEnabled.equals("true")) {
+                        String publicKey = callContext.getUser().getPublicKey();
+                        String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                        YTClient ytClient = YTClientMgr.getClient(new_publicKey);
+                        ytClient.createBucketAccessor().updateBucket(bucketName,bytes);
+                    } else{
+                        BucketHandler.updateBucket(bucketName,bytes);
+                    }
+
                 } catch (ServiceException e) {
                     e.printStackTrace();
                 }
@@ -241,16 +257,29 @@ public class RepositoryImpl implements S3Repository {
 
         } catch (IOException e) {
             e.printStackTrace();
+        } catch (ServiceException e) {
+            e.printStackTrace();
         }
     }
 
     @Override
     public VersioningConfiguration getBucketVersioning(S3CallContext callContext, String bucketName) {
         Map<String,byte[]> map = new HashMap<>();
-        try {
-            map = BucketHandler.getBucketByName(bucketName);
-        } catch (ServiceException e) {
-            e.printStackTrace();
+        if(securityEnabled.equals("true")) {
+            String publicKey = callContext.getUser().getPublicKey();
+            String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+            YTClient ytClient = YTClientMgr.getClient(new_publicKey);
+            try {
+                map=ytClient.createBucketAccessor().getBucketByName(bucketName);
+            } catch (ServiceException e) {
+                e.printStackTrace();
+            }
+        }else {
+            try {
+                map = BucketHandler.getBucketByName(bucketName);
+            } catch (ServiceException e) {
+                e.printStackTrace();
+            }
         }
         byte[] bs = map.get(bucketName);
         Map<String,String> header = SerializationUtil.deserializeMap(bs);
@@ -281,7 +310,20 @@ public class RepositoryImpl implements S3Repository {
         }
         List<AbstractVersionElement> versions = new ArrayList<>();
         try {
-            List<FileMetaMsg> fileMetas = ObjectHandler.listBucket(bucketName,fileName,prefix,isVersion,nextId,maxKeys);
+            List<FileMetaMsg> fileMetas = new ArrayList<>();
+            if(securityEnabled.equals("true")) {
+                String publicKey = callContext.getUser().getPublicKey();
+                String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+                YTClient ytClient = YTClientMgr.getClient(new_publicKey);
+                fileMetas = ytClient.createObjectAccessor().listBucket(bucketName,fileName,prefix,isVersion,nextId,maxKeys);
+
+            }else {
+                try {
+                    fileMetas = ObjectHandler.listBucket(bucketName,fileName,prefix,isVersion,nextId,maxKeys);
+                } catch (ServiceException e) {
+                    e.printStackTrace();
+                }
+            }
             for(FileMetaMsg fileMeta : fileMetas) {
                 Map<String,String> header = SerializationUtil.deserializeMap(fileMeta.getMeta());
                 AbstractVersionElement abstractVersionElement = new AbstractVersionElement(
