@@ -200,7 +200,7 @@ public class UserController {
     @RequestMapping(value = "/insertUser",method = RequestMethod.POST)
     @ResponseBody
     public Ret addUser(HttpServletRequest request,HttpServletResponse response) {
-        Version.setVersionID("1.0.0.14");
+        Version.setVersionID("1.0.0.15");
         response.setHeader("Access-Control-Allow-Origin","*");
         String privateKey = request.getParameter("privateKey");
         String username = request.getParameter("username");
@@ -291,9 +291,6 @@ public class UserController {
             String sha256Key = SHA256Util.getSHA256(aes_name);
             updateAppProperties(sha256Key);
 
-
-
-
             //以上如果没有问题，则进入下一步  生成证书文件，先将用户名和私钥加密
             AESCoder coder = null;
             try {
@@ -365,7 +362,7 @@ public class UserController {
 
     //用户注册成功后初始化
     private  void init(String KUSp,String username) throws IOException {
-        Version.setVersionID("1.0.0.14");
+        Version.setVersionID("1.0.0.15");
         Configurator cfg = new Configurator();
         cfg.setKUSp(KUSp);
         cfg.setUsername(username);
@@ -391,7 +388,7 @@ public class UserController {
     @RequestMapping(value = "/get_version",method = RequestMethod.GET)
     @ResponseBody
     public String getVersion(HttpServletRequest request, HttpServletResponse response) {
-        String version_info = "{\"version\":\"1.0.0.14\",\"Date\":\"2020-05-15\"}";
+        String version_info = "{\"version\":\"1.0.0.15\",\"Date\":\"2020-07-16\"}";
         response.setHeader("Access-Control-Allow-Origin","*");
         return version_info;
     }
@@ -523,7 +520,7 @@ public class UserController {
     @RequestMapping(value = "/importUsers",method = RequestMethod.POST)
     @ResponseBody
     public Ret importUsers(HttpServletRequest request,HttpServletResponse response) {
-        Version.setVersionID("1.0.0.14");
+        Version.setVersionID("1.0.0.15");
         response.setHeader("Access-Control-Allow-Origin","*");
         List<YottaUser> users = new ArrayList<>();
         Workbook wb = null; //拿到文件

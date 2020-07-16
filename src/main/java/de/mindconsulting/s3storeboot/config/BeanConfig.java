@@ -109,7 +109,7 @@ public class BeanConfig {
 
     @Bean
     ServletRegistrationBean s3Registration(S3ServletConfiguration config, S3Repository repository) throws IOException {
-        Version.setVersionID("1.0.0.14");
+        Version.setVersionID("1.0.0.15");
         if(securityEnabled.equals("true")) {
             String certList = dirctory + "/" + "cert.list";
             Path path = Paths.get(certList);
