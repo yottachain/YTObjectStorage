@@ -8,6 +8,7 @@ import com.ytfs.client.Configurator;
 import com.ytfs.client.LocalInterface;
 import com.ytfs.client.Version;
 import com.ytfs.client.s3.ObjectHandler;
+import com.ytfs.client.v2.YTClient;
 import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.ServiceException;
 import com.ytfs.common.codec.AESCoder;
@@ -76,6 +77,8 @@ public class UserController {
     String setUploadFileMaxMemory;
     @Value("${s3server.uploadBlockThreadNum}")
     String uploadBlockThreadNum;
+    @Value("${s3server.securityEnabled}")
+    String securityEnabled;
 
 
     @RequestMapping(value = "/getUserStat",method = RequestMethod.GET)
@@ -200,7 +203,7 @@ public class UserController {
     @RequestMapping(value = "/insertUser",method = RequestMethod.POST)
     @ResponseBody
     public Ret addUser(HttpServletRequest request,HttpServletResponse response) {
-        Version.setVersionID("1.0.0.14");
+        Version.setVersionID("1.0.0.15");
         response.setHeader("Access-Control-Allow-Origin","*");
         String privateKey = request.getParameter("privateKey");
         String username = request.getParameter("username");
@@ -291,9 +294,6 @@ public class UserController {
             String sha256Key = SHA256Util.getSHA256(aes_name);
             updateAppProperties(sha256Key);
 
-
-
-
             //以上如果没有问题，则进入下一步  生成证书文件，先将用户名和私钥加密
             AESCoder coder = null;
             try {
@@ -365,7 +365,7 @@ public class UserController {
 
     //用户注册成功后初始化
     private  void init(String KUSp,String username) throws IOException {
-        Version.setVersionID("1.0.0.14");
+        Version.setVersionID("1.0.0.15");
         Configurator cfg = new Configurator();
         cfg.setKUSp(KUSp);
         cfg.setUsername(username);
@@ -391,7 +391,7 @@ public class UserController {
     @RequestMapping(value = "/get_version",method = RequestMethod.GET)
     @ResponseBody
     public String getVersion(HttpServletRequest request, HttpServletResponse response) {
-        String version_info = "{\"version\":\"1.0.0.14\",\"Date\":\"2020-05-15\"}";
+        String version_info = "{\"version\":\"1.0.0.15\",\"Date\":\"2020-07-16\"}";
         response.setHeader("Access-Control-Allow-Origin","*");
         return version_info;
     }
@@ -400,7 +400,7 @@ public class UserController {
     @ResponseBody
     public int getProgress(HttpServletRequest request, HttpServletResponse response) {
         response.setHeader("Access-Control-Allow-Origin","*");
-
+//        String publicKey=KeyUtil.toPublicKey("5Kh5MhSNM9zjNwGz1GrC88bat9JptJpAVkeQWVdssAhtVS312hK").replace("EOS", "YTA");
         String status = ProgressUtil.getUserHDDStatus();
         if("ERR".equals(status)) {
             return 102;
@@ -408,12 +408,26 @@ public class UserController {
         String bucketName = request.getParameter("bucketName");
         String key = request.getParameter("key");
         boolean isFileExist = false;
-        try {
-            isFileExist = ObjectHandler.isExistObject(bucketName,key,null);
-            LOG.info(key + " is " + isFileExist);
-        } catch (ServiceException e) {
-            e.printStackTrace();
-        }
+
+//        if(securityEnabled.equals("true")){
+////            String publicKey = request.getParameter("publicKey");
+//            String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+//            YTClient client = YTClientMgr.getClient(new_publicKey);
+//            try {
+//                isFileExist = client.createObjectAccessor().isExistObject(bucketName,key,null);
+//                LOG.info(key + " is " + isFileExist);
+//            } catch (ServiceException e) {
+//                e.printStackTrace();
+//            }
+//        }else{
+//            try {
+//                isFileExist = ObjectHandler.isExistObject(bucketName,key,null);
+//                LOG.info(key + " is " + isFileExist);
+//            } catch (ServiceException e) {
+//                e.printStackTrace();
+//            }
+//        }
+
 
         String s = bucketName+"-"+key;
         String sha256Key = SHA256Util.getSHA256(s);
@@ -523,7 +537,7 @@ public class UserController {
     @RequestMapping(value = "/importUsers",method = RequestMethod.POST)
     @ResponseBody
     public Ret importUsers(HttpServletRequest request,HttpServletResponse response) {
-        Version.setVersionID("1.0.0.14");
+        Version.setVersionID("1.0.0.15");
         response.setHeader("Access-Control-Allow-Origin","*");
         List<YottaUser> users = new ArrayList<>();
         Workbook wb = null; //拿到文件

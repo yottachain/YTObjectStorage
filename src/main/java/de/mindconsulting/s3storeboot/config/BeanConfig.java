@@ -3,6 +3,7 @@ package de.mindconsulting.s3storeboot.config;
 import com.s3.user.controller.sync.task.AyncUploadSenderPool;
 import com.ytfs.client.ClientInitor;
 import com.ytfs.client.Configurator;
+import com.ytfs.client.DownloadShardParam;
 import com.ytfs.client.Version;
 import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.codec.AESCoder;
@@ -16,7 +17,6 @@ import de.mindconsulting.s3storeboot.entities.YottaUser;
 import de.mindconsulting.s3storeboot.repository.impl.RepositoryImpl;
 import de.mindconsulting.s3storeboot.util.AESUtil;
 import de.mindconsulting.s3storeboot.util.PropertiesUtil;
-import net.sf.json.JSONObject;
 import org.apache.log4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -97,6 +97,8 @@ public class BeanConfig {
     String uploadFileMaxMemory;
     @Value("${s3server.securityEnabled}")
     String securityEnabled;
+    @Value("${s3server.maxRetryTimes}")
+    int maxRetryTimes;
 
     private static final Logger LOG = Logger.getLogger(BeanConfig.class);
 
@@ -109,7 +111,8 @@ public class BeanConfig {
 
     @Bean
     ServletRegistrationBean s3Registration(S3ServletConfiguration config, S3Repository repository) throws IOException {
-        Version.setVersionID("1.0.0.14");
+        DownloadShardParam.Max_Retry_Times = maxRetryTimes;
+        Version.setVersionID("1.0.0.15");
         if(securityEnabled.equals("true")) {
             String certList = dirctory + "/" + "cert.list";
             Path path = Paths.get(certList);
@@ -141,16 +144,17 @@ public class BeanConfig {
                 LOG.info("Multiuser initialization is not a significant error...");
             }
         }else {
-            String cert_path = dirctory + "/"+"yts3.conf";
-
-            String cert = readCert(cert_path);
-
-            if(!"".equals(cert)) {
-                JSONObject jsonStr = JSONObject.fromObject(cert);
-                String KUSp = jsonStr.getString("privateKey");
-                String username = jsonStr.getString("username");
-                init(KUSp,username);
-            }
+            LOG.info("Please enable multiple users and set the value securityEnabled to true.");
+//            String cert_path = dirctory + "/"+"yts3.conf";
+//
+//            String cert = readCert(cert_path);
+//
+//            if(!"".equals(cert)) {
+//                JSONObject jsonStr = JSONObject.fromObject(cert);
+//                String KUSp = jsonStr.getString("privateKey");
+//                String username = jsonStr.getString("username");
+//                init(KUSp,username);
+//            }
         }
         AyncUploadSenderPool.init(fsRepoRoot,queueSize,syncCount,cosBackUp);
         ServletRegistrationBean bean = new ServletRegistrationBean();
@@ -225,17 +229,6 @@ public class BeanConfig {
         cfg.setZipkinServer(zipkinServer);
         ClientInitor.init(cfg);
     }
-//    @Bean
-//    public CorsConfiguration buildConfig() {
-//        LOG.info("cros***********************************");
-//
-//        CorsConfiguration corsConfiguration = new CorsConfiguration();
-//        corsConfiguration.addAllowedOrigin("*");
-//        corsConfiguration.addAllowedHeader("*");
-//        corsConfiguration.addAllowedMethod("*");
-//        corsConfiguration.setAllowCredentials(true);
-//        return corsConfiguration;
-//    }
 
     //springboot 2.0以上的方式
     public void addCorsMappings(CorsRegistry registry) {
