@@ -409,24 +409,24 @@ public class UserController {
         String key = request.getParameter("key");
         boolean isFileExist = false;
 
-//        if(securityEnabled.equals("true")){
-////            String publicKey = request.getParameter("publicKey");
-//            String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
-//            YTClient client = YTClientMgr.getClient(new_publicKey);
-//            try {
-//                isFileExist = client.createObjectAccessor().isExistObject(bucketName,key,null);
-//                LOG.info(key + " is " + isFileExist);
-//            } catch (ServiceException e) {
-//                e.printStackTrace();
-//            }
-//        }else{
-//            try {
-//                isFileExist = ObjectHandler.isExistObject(bucketName,key,null);
-//                LOG.info(key + " is " + isFileExist);
-//            } catch (ServiceException e) {
-//                e.printStackTrace();
-//            }
-//        }
+        if(securityEnabled.equals("true")){
+            String publicKey = request.getParameter("publicKey");
+            String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+            YTClient client = YTClientMgr.getClient(new_publicKey);
+            try {
+                isFileExist = client.createObjectAccessor().isExistObject(bucketName,key,null);
+                LOG.info(key + " is " + isFileExist);
+            } catch (ServiceException e) {
+                e.printStackTrace();
+            }
+        }else{
+            try {
+                isFileExist = ObjectHandler.isExistObject(bucketName,key,null);
+                LOG.info(key + " is " + isFileExist);
+            } catch (ServiceException e) {
+                e.printStackTrace();
+            }
+        }
 
 
         String s = bucketName+"-"+key;
