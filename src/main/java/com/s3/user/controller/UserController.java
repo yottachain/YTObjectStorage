@@ -8,6 +8,7 @@ import com.ytfs.client.Configurator;
 import com.ytfs.client.LocalInterface;
 import com.ytfs.client.Version;
 import com.ytfs.client.s3.ObjectHandler;
+import com.ytfs.client.v2.YTClient;
 import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.ServiceException;
 import com.ytfs.common.codec.AESCoder;
@@ -76,6 +77,8 @@ public class UserController {
     String setUploadFileMaxMemory;
     @Value("${s3server.uploadBlockThreadNum}")
     String uploadBlockThreadNum;
+    @Value("${s3server.securityEnabled}")
+    String securityEnabled;
 
 
     @RequestMapping(value = "/getUserStat",method = RequestMethod.GET)
@@ -397,7 +400,7 @@ public class UserController {
     @ResponseBody
     public int getProgress(HttpServletRequest request, HttpServletResponse response) {
         response.setHeader("Access-Control-Allow-Origin","*");
-
+//        String publicKey=KeyUtil.toPublicKey("5Kh5MhSNM9zjNwGz1GrC88bat9JptJpAVkeQWVdssAhtVS312hK").replace("EOS", "YTA");
         String status = ProgressUtil.getUserHDDStatus();
         if("ERR".equals(status)) {
             return 102;
@@ -405,12 +408,26 @@ public class UserController {
         String bucketName = request.getParameter("bucketName");
         String key = request.getParameter("key");
         boolean isFileExist = false;
-        try {
-            isFileExist = ObjectHandler.isExistObject(bucketName,key,null);
-            LOG.info(key + " is " + isFileExist);
-        } catch (ServiceException e) {
-            e.printStackTrace();
-        }
+
+//        if(securityEnabled.equals("true")){
+////            String publicKey = request.getParameter("publicKey");
+//            String new_publicKey = publicKey.substring(publicKey.indexOf("YTA")+3);
+//            YTClient client = YTClientMgr.getClient(new_publicKey);
+//            try {
+//                isFileExist = client.createObjectAccessor().isExistObject(bucketName,key,null);
+//                LOG.info(key + " is " + isFileExist);
+//            } catch (ServiceException e) {
+//                e.printStackTrace();
+//            }
+//        }else{
+//            try {
+//                isFileExist = ObjectHandler.isExistObject(bucketName,key,null);
+//                LOG.info(key + " is " + isFileExist);
+//            } catch (ServiceException e) {
+//                e.printStackTrace();
+//            }
+//        }
+
 
         String s = bucketName+"-"+key;
         String sha256Key = SHA256Util.getSHA256(s);
