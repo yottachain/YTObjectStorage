@@ -256,92 +256,52 @@ public class UserController {
     @RequestMapping(value = "/register",method = RequestMethod.POST)
     @ResponseBody
     public Ret registerUser(HttpServletRequest request,HttpServletResponse response) {
+
         response.setHeader("Access-Control-Allow-Origin","*");
         String privateKey = request.getParameter("privateKey");
         String username = request.getParameter("username");
+        Version.setVersionID("1.0.0.15");
+        String publicKey = null;
+        try {
+            publicKey=KeyUtil.toPublicKey(privateKey).replace("EOS", "YTA");
+        }catch (Exception e) {
+            return Ret.error().setData("The private key is wrong 111...");
+        }
 
-        //判断conf目录下是否有cert证书，如果存在不再另外注册，不存在则往下
-        Path certpath = Paths.get(dirctory+"/cert");
-        if (!Files.exists(certpath)) {
-            String publicKey = null;
-            try {
-                publicKey=KeyUtil.toPublicKey(privateKey).replace("EOS", "YTA");
-            }catch (Exception e) {
-                return Ret.error().setData("The private key is wrong 111...");
-            }
+        String jsonStr = "{\"public_key\":" + "\"" + publicKey + "\"}";
+        String result = null;
+        try {
+            result = HttpClientUtils.ocPost(eosHistoryUrl + "get_key_accounts", jsonStr);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Ret.error().setData("The private key is wrong 222...");
+        }
 
-            String jsonStr = "{\"public_key\":" + "\"" + publicKey + "\"}";
-            String result = null;
-            try {
-                result = HttpClientUtils.ocPost(eosHistoryUrl + "get_key_accounts", jsonStr);
-            } catch (Exception e) {
-                e.printStackTrace();
-                return Ret.error().setData("The private key is wrong 222...");
+        JSONObject json = JSONObject.fromObject(result);
+        JSONArray array = json.getJSONArray("account_names");
+        if(array.size() > 0) {
+            //判断用户输入的username是否正确  如果不正确 返回错误
+            if(!array.contains(username)) {
+                return Ret.error().setData("The username is wrong");
             }
-
-            JSONObject json = JSONObject.fromObject(result);
-            JSONArray array = json.getJSONArray("account_names");
-            if(array.size() > 0) {
-                //判断用户输入的username是否正确  如果不正确 返回错误
-                if(!array.contains(username)) {
-                    return Ret.error().setData("The username is wrong");
-                }
-            } else {
-                //返回错误  根据当前信息没有查到用户
-                return Ret.error().setData("The private key is wrong 333...");
-            }
-            String aes_name = "yottachain" + username;
-            String sha256Key = SHA256Util.getSHA256(aes_name);
-            updateAppProperties(sha256Key);
-
-            //以上如果没有问题，则进入下一步  生成证书文件，先将用户名和私钥加密
-            AESCoder coder = null;
-            try {
-                UserConfig.AESKey = KeyStoreCoder.generateUserKey(sha256Key.getBytes());
-                coder = new AESCoder(Cipher.ENCRYPT_MODE);
-            } catch (NoSuchAlgorithmException e) {
-                e.printStackTrace();
-            } catch (NoSuchPaddingException e) {
-                e.printStackTrace();
-            } catch (InvalidKeyException e) {
-                e.printStackTrace();
-            }
-            String combo_box = "{\"privateKey\":" + "\"" + privateKey + "\"" + ",\"username\":" + "\"" + username + "\"}";
-            byte[] data = coder.update(combo_box.getBytes());
-            String cert_path = dirctory + "/"+"cert";
-            File file = new File(cert_path);
-
-            FileOutputStream out = null;
-            try {
-                out = new FileOutputStream(file);
-                out.write(data);
-                byte[] data2 = new byte[0];
-                try {
-                    data2 = coder.doFinal();
-                } catch (IllegalBlockSizeException e) {
-                    e.printStackTrace();
-                } catch (BadPaddingException e) {
-                    e.printStackTrace();
-                }
-                out.write(data2);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }finally {
-                try {
-                    out.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            try {
-                this.init(privateKey,username);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
-            return Ret.ok();
         } else {
-            return Ret.error().setData("The private key has been imported. If you need to switch users, please delete cert first, and re-import the certificate after restarting the service");
+            //返回错误  根据当前信息没有查到用户
+            return Ret.error().setData("The private key is wrong 333...");
+        }
+        //*****************用户校验完成**************************
+        List<YottaUser> list = new ArrayList<>();
+        YottaUser user = new YottaUser();
+        user.setUsername(username);
+        user.setPrivateKey(privateKey);
+        list.add(user);
+        YottaUser.save(list);
+        try {
+            YTClientMgr.newInstance(username,privateKey);
+            LOG.info("user ["+ username + "]  register success.");
+            return Ret.ok();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return Ret.error();
         }
     }
 

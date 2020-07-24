@@ -1,11 +1,14 @@
 package com.s3.user.controller.sync.task;
 
+import com.ytfs.client.Configurator;
 import com.ytfs.client.UploadObject;
+import com.ytfs.client.Version;
 import com.ytfs.client.s3.ObjectHandler;
 import com.ytfs.client.v2.YTClient;
 import com.ytfs.client.v2.YTClientMgr;
 import com.ytfs.common.SerializationUtil;
 import com.ytfs.common.ServiceException;
+import de.mindconsulting.s3storeboot.entities.YottaUser;
 import de.mindconsulting.s3storeboot.service.CosBackupService;
 import de.mindconsulting.s3storeboot.util.ProgressUtil;
 import de.mindconsulting.s3storeboot.util.PropertiesUtil;
@@ -16,6 +19,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 
@@ -25,9 +29,6 @@ public class AyncSender extends Thread {
     private final ArrayBlockingQueue<AyncFileMeta> queue;
 
     private final int threadId;
-
-//    @Autowired
-//    private CosBackupService cosBackupService;
 
     public AyncSender(int ii, ArrayBlockingQueue<AyncFileMeta> queue) {
         this.queue = queue;
@@ -51,6 +52,41 @@ public class AyncSender extends Thread {
 
     @Override
     public void run() {
+        Version.setVersionID("1.0.0.15");
+        String propertiesPath = "../bin/application.properties";
+        PropertiesUtil p = new PropertiesUtil(propertiesPath);
+        String securityEnabled = p.readProperty("s3server.securityEnabled");
+        if(securityEnabled.equals("true")){
+            Configurator cfg=new Configurator();
+            //矿机列表长度(328-1000)
+            cfg.setPNN(p.readProperty("s3server.PNN"));
+            //每N分钟更新一次矿机列表(2-10分钟)
+            cfg.setPTR("s3server.PTR");
+            //上传文件时最大分片并发数(50-3000)
+            cfg.setUploadShardThreadNum("s3server.uploadShardThreadNum");
+            //上传文件时最大块并发数(3-500)
+            cfg.setUploadBlockThreadNum("s3server.uploadBlockThreadNum");
+            //上传文件时没文件最大占用5M内存(3-20)
+            cfg. setUploadFileMaxMemory("s3server.uploadFileMaxMemory");
+            //下载文件时最大分片并发数(50-500)
+            cfg. setDownloadThread ("s3server.downloadThread");
+            try{
+                String certList = "../conf/cert.list";
+                Path path = Paths.get(certList);
+                Files.createFile(path);
+                YTClientMgr.init(cfg);
+                List<YottaUser> list = YottaUser.read();
+                if(list.size() > 0){
+                    for(YottaUser user : list) {
+                        YTClientMgr.newInstance(user.getUsername(),user.getPrivateKey());
+                    }
+                }
+            }catch (Exception e) {
+                LOG.info("Multiuser initialization is not a significant error...");
+            }
+        }
+
+
         AyncFileMeta req = null;
         while (!this.isInterrupted()) {
             try {
@@ -68,8 +104,8 @@ public class AyncSender extends Thread {
                 Map<String,String> header;
                 header = SerializationUtil.deserializeMap(bs);
                 String fileLength = header.get("contentLength");
-                PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
-                String securityEnabled = p.readProperty("s3server.securityEnabled");
+//                PropertiesUtil p = new PropertiesUtil("../bin/application.properties");
+//                String securityEnabled = p.readProperty("s3server.securityEnabled");
                 Map<String, String> map = SerializationUtil.deserializeMap(bs);
                 map.remove("cosMeta");
                 map.remove("xmlMeta");
