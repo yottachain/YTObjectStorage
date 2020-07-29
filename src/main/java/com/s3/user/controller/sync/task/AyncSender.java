@@ -73,7 +73,9 @@ public class AyncSender extends Thread {
             try{
                 String certList = "../conf/cert.list";
                 Path path = Paths.get(certList);
-                Files.createFile(path);
+                if(!Files.exists(path)) {
+                    Files.createFile(path);
+                }
                 YTClientMgr.init(cfg);
                 List<YottaUser> list = YottaUser.read();
                 if(list.size() > 0){
@@ -82,7 +84,7 @@ public class AyncSender extends Thread {
                     }
                 }
             }catch (Exception e) {
-                LOG.info("Multiuser initialization is not a significant error...");
+                LOG.info("Multiuser initialization is not a significant error...",e);
             }
         }
 
